@@ -138,6 +138,24 @@ void main() {
     expect(find.text('127k'), findsOneWidget);
   });
 
+  testWidgets('Copilot shows its monthly premium requests', (tester) async {
+    final u = ClaudeUsage.from({
+      'copilot': {
+        'login': 'me',
+        'plan': 'individual',
+        'used': 90,
+        'of': 300,
+        'limits': {'premium': {'pct': 30, 'resets': DateTime.now().add(const Duration(days: 9, hours: 1)).millisecondsSinceEpoch ~/ 1000}},
+      },
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: CopilotCard(u.copilot!))));
+    expect(find.text('Premium requests, this month'), findsOneWidget);
+    expect(find.text('90 of 300  '), findsOneWidget);
+    expect(find.text('30%'), findsOneWidget);
+    expect(find.text('Individual'), findsOneWidget);
+    expect(find.textContaining('Resets in 9d'), findsOneWidget);
+  });
+
   testWidgets('the chat shows Claude working with its word', (tester) async {
     final link = Link(const MacPairing(relay: 'h:1', pin: '', room: '1', macPub: '', host: 'mac'), KeyPair.generate());
     final tab = TermTab(1, 'claude', kind: 'claude', session: 's', dir: '/');

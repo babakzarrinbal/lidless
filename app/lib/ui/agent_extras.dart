@@ -228,12 +228,9 @@ class UsageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hint = !u.statusline
-        ? 'Claude Code reports usage to the Mac agent through its status line. '
-            'Another status line is set up in ~/.claude/settings.json, so usage can\'t show here.'
-        : u.limits.isEmpty
-            ? 'Usage shows after Claude next answers in any session.'
-            : null;
+    final hint = u.limits.isEmpty
+        ? 'Claude Code on the Mac reported no plan limits: it is signed out, uses an API key, or is out of date.'
+        : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Icon(Icons.auto_awesome_rounded, size: 18, color: C.amber),
@@ -259,9 +256,47 @@ class UsageCard extends StatelessWidget {
   }
 }
 
+/// Copilot's monthly premium requests, as GitHub reports them to the Mac's
+/// GitHub CLI.
+class CopilotCard extends StatelessWidget {
+  const CopilotCard(this.u, {super.key});
+  final CopilotUsage u;
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = u.plan.isEmpty ? '' : u.plan[0].toUpperCase() + u.plan.substring(1);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Icon(Icons.code_rounded, size: 18, color: C.accent),
+        const SizedBox(width: 8),
+        const Text('Copilot', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+        if (plan.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(border: Border.all(color: C.line), borderRadius: BorderRadius.circular(6)),
+            child: Text(plan, style: const TextStyle(fontSize: 11.5, color: C.dim)),
+          ),
+        ],
+      ]),
+      if (u.login.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(top: 3), child: Text(u.login, style: const TextStyle(color: C.dim, fontSize: 13))),
+      const SizedBox(height: 10),
+      for (final l in u.limits) _LimitBar(l, detail: u.used != null && u.of != null ? '${u.used} of ${u.of}' : null),
+      if (u.ended)
+        const Text('This GitHub account has no Copilot subscription now.', style: TextStyle(fontSize: 12.5, color: C.dim))
+      else if (u.unlimited)
+        const Text('Premium requests are unlimited on this plan.', style: TextStyle(fontSize: 12.5, color: C.dim))
+      else if (u.limits.isEmpty)
+        const Text('GitHub reported no premium request quota.', style: TextStyle(fontSize: 12.5, color: C.dim)),
+    ]);
+  }
+}
+
 class _LimitBar extends StatelessWidget {
-  const _LimitBar(this.l);
+  const _LimitBar(this.l, {this.detail});
   final UsageLimit l;
+  final String? detail; // e.g. "90 of 300"
 
   @override
   Widget build(BuildContext context) {
@@ -273,6 +308,7 @@ class _LimitBar extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(l.label, style: const TextStyle(fontSize: 13.5))),
+          if (detail != null) Text('$detail  ', style: const TextStyle(fontSize: 12, color: C.dim)),
           Text('${l.pct.round()}%', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: color)),
         ]),
         const SizedBox(height: 5),

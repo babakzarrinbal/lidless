@@ -1,11 +1,10 @@
 package main
 
-// Plan usage and context window, as Claude Code itself reports them: it hands
-// its status line command a JSON snapshot (rate limits, context window) after
-// every answer. `macremote statusline` is that command; it keeps the latest
-// snapshot per session here, prints a short line for the terminal, and the
-// phone reads the snapshots. Nothing is asked of Anthropic's servers and no
-// credential is touched.
+// Context window (and, from older Claude Code versions, plan limits), as
+// Claude Code reports them: it hands its status line command a JSON snapshot
+// after every answer. `macremote statusline` is that command; it keeps the
+// latest snapshot per session here, prints a short line for the terminal, and
+// the phone reads the snapshots. Plan limits now come from limits.go.
 
 import (
 	"bytes"
@@ -17,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -158,6 +158,15 @@ func readStatus(sid string) *statusSnap {
 // saw, the account, and the tokens counted per account.
 func claudeUsage() map[string]any {
 	out := map[string]any{"limits": map[string]limit{}, "at": 0, "statusline": statuslineInstalled(), "tokens": tokenLedger.tokenTotals()}
+	var asked, copilot map[string]any
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); asked = claudeLimits() }()
+	go func() { defer wg.Done(); copilot = copilotQuota() }()
+	wg.Wait()
+	if copilot != nil {
+		out["copilot"] = copilot
+	}
 	home, _ := os.UserHomeDir()
 	who := claudeAccountEmail(filepath.Join(home, ".claude"))
 	files, _ := filepath.Glob(filepath.Join(statusDir(), "*.json"))
@@ -173,7 +182,10 @@ func claudeUsage() map[string]any {
 			best = &s
 		}
 	}
-	if best != nil {
+	if asked != nil {
+		// Claude Code's own answer; the status line no longer carries limits.
+		out["limits"], out["at"] = asked["limits"], asked["at"]
+	} else if best != nil {
 		lim := map[string]limit{}
 		for k, raw := range best.RateLimits {
 			if w, ok := limitOf(raw); ok {

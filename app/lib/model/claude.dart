@@ -63,6 +63,7 @@ class UsageLimit {
         'five_hour' => 'Session (5 hours)',
         'seven_day' => 'Weekly, all models',
         'spend_limit' => 'Spend limit',
+        'premium' => 'Premium requests, this month',
         _ when key.startsWith('seven_day_') => 'Weekly, ${_title(key.substring(10))}',
         _ => _title(key),
       };
@@ -79,22 +80,42 @@ class ClaudeUsage {
         plan = (m['account'] as Map?)?['plan'] as String? ?? '',
         statusline = m['statusline'] == true,
         at = ((m['at'] as num?) ?? 0) > 0 ? DateTime.fromMillisecondsSinceEpoch((m['at'] as num).toInt() * 1000) : null,
-        limits = [
-          for (final e in ((m['limits'] as Map?) ?? const {}).entries)
-            UsageLimit(
-              e.key as String,
-              ((e.value as Map)['pct'] as num).toDouble(),
-              ((e.value as Map)['resets'] as num? ?? 0) > 0
-                  ? DateTime.fromMillisecondsSinceEpoch(((e.value as Map)['resets'] as num).toInt() * 1000)
-                  : null,
-            ),
-        ]..sort((a, b) => a.order != b.order ? a.order - b.order : a.key.compareTo(b.key)),
-        tokens = [for (final t in (m['tokens'] as List? ?? const [])) AccountTokens.from(t as Map)];
+        limits = _limits(m['limits']),
+        tokens = [for (final t in (m['tokens'] as List? ?? const [])) AccountTokens.from(t as Map)],
+        copilot = m['copilot'] is Map ? CopilotUsage.from(m['copilot'] as Map) : null;
   final String email, plan;
   final bool statusline; // Claude Code reports to the agent
   final DateTime? at; // when Claude last reported
   final List<UsageLimit> limits;
   final List<AccountTokens> tokens; // the signed-in accounts first
+  final CopilotUsage? copilot; // when the Mac's GitHub CLI is signed in
+}
+
+List<UsageLimit> _limits(Object? m) => [
+      for (final e in ((m as Map?) ?? const {}).entries)
+        UsageLimit(
+          e.key as String,
+          ((e.value as Map)['pct'] as num).toDouble(),
+          ((e.value as Map)['resets'] as num? ?? 0) > 0
+              ? DateTime.fromMillisecondsSinceEpoch(((e.value as Map)['resets'] as num).toInt() * 1000)
+              : null,
+        ),
+    ]..sort((a, b) => a.order != b.order ? a.order - b.order : a.key.compareTo(b.key));
+
+/// Copilot's one limit: premium requests per month.
+class CopilotUsage {
+  CopilotUsage.from(Map m)
+      : login = m['login'] as String? ?? '',
+        plan = m['plan'] as String? ?? '',
+        limits = _limits(m['limits']),
+        used = (m['used'] as num?)?.round(),
+        of = (m['of'] as num?)?.round(),
+        unlimited = m['unlimited'] == true,
+        ended = m['ended'] == true;
+  final String login, plan;
+  final List<UsageLimit> limits;
+  final int? used, of; // premium requests
+  final bool unlimited, ended;
 }
 
 /// The tokens one account used, as the Mac counted them from the sessions.

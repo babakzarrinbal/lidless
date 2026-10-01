@@ -597,7 +597,7 @@ class _HomeState extends State<Home> {
     Map? s;
     ClaudeUsage? usage;
     final u = link
-        .call('usage', null, const Duration(seconds: 8))
+        .call('usage', null, const Duration(seconds: 25)) // the Mac asks Claude Code and GitHub
         .then((r) => ClaudeUsage.from(r as Map))
         .then<ClaudeUsage?>((v) => v, onError: (_) => null); // an older agent has no usage
     try {
@@ -619,6 +619,7 @@ class _HomeState extends State<Home> {
             if (usage != null) ...[
               UsageCard(usage),
               const Divider(height: 28),
+              if (usage.copilot != null) ...[CopilotCard(usage.copilot!), const Divider(height: 28)],
               TokensCard(usage.tokens, onReset: (a) async {
                 final r = await link.call('tokens.reset', {'tool': a.tool, 'account': a.account}, const Duration(seconds: 30));
                 return [for (final t in r as List) AccountTokens.from(t as Map)];
