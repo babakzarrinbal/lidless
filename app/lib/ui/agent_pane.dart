@@ -44,7 +44,7 @@ class AgentPaneState extends State<AgentPane> {
   Terms get terms => widget.terms;
   TermTab? get tab => widget.session.agent;
   bool get _cli => widget.session.tool == 'cli';
-  bool get _canChat => widget.session.tool == 'claude';
+  bool get _canChat => const {'claude', 'copilot'}.contains(widget.session.tool);
   bool _chatMode = true; // Claude shows as a chat; the terminal is one tap away
   bool get _chat => _canChat && _chatMode && tab != null;
   bool get _slashy => !_cli && _inputFocus.hasFocus && RegExp(r'^/\S*$').hasMatch(_input.text);
@@ -133,6 +133,7 @@ class AgentPaneState extends State<AgentPane> {
       terms.type(t, text);
     }
     Future.delayed(Duration(milliseconds: text.length > 2000 ? 300 : 120), () => terms.type(t, '\r'));
+    if (_chat) t.chat.sent(text);
     _input.clear();
     _inputFocus.unfocus(); // show Claude's answer, not the keyboard
   }

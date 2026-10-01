@@ -148,10 +148,11 @@ class _HomeState extends State<Home> {
   /// Shows a conversation picked from the folder's history: the session that
   /// already has it open, or a new session resuming it.
   Future<void> _openConversation(Session from, Conversation c) =>
-      _resumeIn(from.dir, c, flagsOf: from.id);
+      _resumeIn(from.dir, c, flagsOf: from.tool == c.tool ? from.id : null);
 
-  /// Resumes a conversation in [dir], with the flags of session [flagsOf] or
-  /// else of the folder's newest session.
+  /// Resumes a conversation in [dir] with the agent that had it, with the
+  /// flags of session [flagsOf] or else of the folder's newest session of
+  /// that agent.
   Future<void> _resumeIn(String dir, Conversation c, {String? flagsOf}) async {
     _scaffold.currentState?.closeDrawer();
     final here = terms.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
@@ -159,18 +160,23 @@ class _HomeState extends State<Home> {
       _select(here.id);
       return;
     }
+    final name = tools[c.tool] ?? c.tool;
+    final canMove = c.tool == 'claude'; // chat.stop knows how to quit Claude only
     if (c.running) {
       final how = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Open on the Mac'),
-          content: const Text('Claude has this conversation open on the Mac, in a terminal or in an editor.\n\n'
-              'Move here quits that Claude (it saves first) and carries on here with everything so far.\n\n'
+          content: Text('$name has this conversation open on the Mac, in a terminal or in an editor.\n\n'
+              '${canMove ? 'Move here quits that $name (it saves first) and carries on here with everything so far.\n\n' : ''}'
               'Open here too keeps both, but neither sees the other\'s new messages.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, 'move'), child: const Text('Move here')),
+            if (canMove) TextButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
+            if (canMove)
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'move'), child: const Text('Move here'))
+            else
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
           ],
         ),
       );
@@ -184,10 +190,10 @@ class _HomeState extends State<Home> {
         }
       }
     }
-    flagsOf ??= terms.sessions.where((s) => s.dir == dir && s.tool == 'claude').lastOrNull?.id;
+    flagsOf ??= terms.sessions.where((s) => s.dir == dir && s.tool == c.tool).lastOrNull?.id;
     final flags = resumeFlags(_prefs?.getString('sessFlags.$flagsOf') ?? '', c.id);
     try {
-      final id = await terms.start(dir, flags, tool: 'claude');
+      final id = await terms.start(dir, flags, tool: c.tool);
       await _prefs?.setString('sessFlags.$id', flags);
       if (mounted) _select(id);
     } on RpcError catch (e) {
@@ -457,7 +463,9 @@ class _HomeState extends State<Home> {
         ),
         IconButton(
           tooltip: 'Mac status',
-          icon: const Icon(Icons.laptop_mac_rounded, size: 21),
+          icon: _statusBusy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.laptop_mac_rounded, size: 21),
           onPressed: link.online ? _statusSheet : null,
         ),
         PopupMenuButton<String>(
@@ -717,7 +725,21 @@ class _HomeState extends State<Home> {
     if (ok == true) widget.onUnpair();
   }
 
+  // The sheet waits for the Mac's answer (usage can take seconds): one at a
+  // time, and the icon spins meanwhile so it's clear the tap was taken.
+  bool _statusBusy = false;
+
   Future<void> _statusSheet() async {
+    if (_statusBusy) return;
+    setState(() => _statusBusy = true);
+    try {
+      await _showStatus();
+    } finally {
+      if (mounted) setState(() => _statusBusy = false);
+    }
+  }
+
+  Future<void> _showStatus() async {
     Map? s;
     ClaudeUsage? usage;
     final u = link

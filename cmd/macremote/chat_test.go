@@ -17,6 +17,12 @@ func TestChatItems(t *testing.T) {
 		`{"type":"user","message":{"content":[{"tool_use_id":"t1","type":"tool_result","content":[{"type":"text","text":"ok"}],"is_error":true}]}}`,
 		`{"type":"system","subtype":"compact_boundary","content":"Conversation compacted"}`,
 		`{"type":"attachment"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"also this"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"<task-notification>x</task-notification>"}`,
+		`{"type":"queue-operation","operation":"remove","content":"also this","reason":"absorbed_mid_turn"}`,
+		`{"type":"attachment","attachment":{"type":"queued_command","prompt":"also this","origin":{"kind":"human"}}}`,
+		`{"type":"attachment","attachment":{"type":"queued_command","prompt":[{"type":"text","text":"and that"}],"origin":{"kind":"human"}}}`,
+		`{"type":"attachment","attachment":{"type":"queued_command","prompt":"bg","origin":{"kind":"task"}}}`,
 		`not json`,
 	}
 	var got []ChatItem
@@ -31,6 +37,10 @@ func TestChatItems(t *testing.T) {
 		{K: "tool", ID: "t1", Name: "Edit", Text: "/x/a.go", Detail: "- a\n+ b"},
 		{K: "result", ID: "t1", Text: "ok", Err: true},
 		{K: "note", Text: "Conversation compacted"},
+		{K: "queued", Text: "also this"},
+		{K: "unqueue", Text: "also this"},
+		{K: "user", Text: "also this"},
+		{K: "user", Text: "and that"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d items: %+v", len(got), got)

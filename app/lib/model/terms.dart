@@ -44,8 +44,13 @@ class TermTab {
 }
 
 /// xterm 4.0 reports the mouse wheel as buttons 68/69 (shift + wheel); real
-/// terminals send 64/65, and full-screen apps such as Claude Code ignore the
+/// terminals send 64/65, and full-screen apps such as Copilot ignore the
 /// rest. Without this a swipe scrolls nothing in those apps.
+///
+/// Its position is wrong too: xterm measures the finger from the phone's
+/// screen, not the terminal, so it lands rows below the app (under its input
+/// box, or off the screen) and the app scrolls nothing. The wheel goes to the
+/// middle of the screen instead, where an agent's conversation is.
 class WheelFix implements TerminalMouseHandler {
   const WheelFix();
 
@@ -56,7 +61,7 @@ class WheelFix implements TerminalMouseHandler {
     if (e.buttonState != TerminalMouseButtonState.down || mode == MouseMode.none || mode == MouseMode.clickOnly) {
       return null;
     }
-    final id = e.button.id - 4, x = e.position.x + 1, y = e.position.y + 1;
+    final id = e.button.id - 4, x = e.state.viewWidth ~/ 2 + 1, y = e.state.viewHeight ~/ 2 + 1;
     if (e.state.mouseReportMode == MouseReportMode.sgr) return '\x1b[<$id;$x;${y}M';
     return '\x1b[M${String.fromCharCode(32 + id)}${String.fromCharCode(32 + x)}${String.fromCharCode(32 + y)}';
   }
@@ -106,7 +111,7 @@ class Terms extends ChangeNotifier {
   bool ctrl = false, alt = false, cmd = false;
   bool synced = false; // the Mac's list has been read at least once
   String? _viewing; // the session on screen
-  int _epoch = 0;
+  int _epoch = 0, _synced = -1; // the link's connection; the one last synced
   bool _syncing = false;
   late final StreamSubscription _sub;
 
@@ -188,11 +193,17 @@ class Terms extends ChangeNotifier {
         if (!t.exited) _attach(t);
       }
       synced = true;
+      _synced = _epoch;
       notifyListeners();
     } catch (_) {
-      // the next reconnect retries
+      // Just connected, the Mac is still busy: try again shortly.
     } finally {
       _syncing = false;
+      if (_synced != _epoch) {
+        Timer(const Duration(seconds: 2), () {
+          if (link.online && link.epoch == _epoch && _synced != _epoch) _sync();
+        });
+      }
     }
   }
 

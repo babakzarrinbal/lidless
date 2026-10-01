@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -25,7 +26,8 @@ class _ChatViewState extends State<ChatView> {
   final _scroll = ScrollController();
   Timer? _soon, _every;
   bool _atBottom = true;
-  LiveScreen _live = const LiveScreen();
+  // The working line's text changes every second: only its row listens.
+  final _live = ValueNotifier(const LiveScreen());
 
   ChatLog get log => widget.tab.chat;
 
@@ -33,9 +35,9 @@ class _ChatViewState extends State<ChatView> {
   void initState() {
     super.initState();
     _attach();
+    // The list is reversed: offset 0 is the newest end.
     _scroll.addListener(() {
-      final p = _scroll.position;
-      final at = p.pixels >= p.maxScrollExtent - 80;
+      final at = _scroll.position.pixels <= 80;
       if (at != _atBottom) setState(() => _atBottom = at);
     });
   }
@@ -69,6 +71,7 @@ class _ChatViewState extends State<ChatView> {
   void dispose() {
     _detach(widget.tab);
     _scroll.dispose();
+    _live.dispose();
     super.dispose();
   }
 
@@ -81,58 +84,67 @@ class _ChatViewState extends State<ChatView> {
     _soon = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       _poll();
-      final live = LiveScreen.of(widget.tab.terminal);
-      if (live.status != _live.status || live.question != _live.question || live.options.length != _live.options.length) {
-        setState(() => _live = live);
-        _follow();
+      final live = LiveScreen.of(widget.tab.terminal), was = _live.value;
+      if (live.status == was.status && live.question == was.question && live.options.length == was.options.length) {
+        return;
       }
+      // Rows come or go: rebuild the list; otherwise only the working line.
+      final rows = (live.status != null) != (was.status != null) ||
+          live.asking != was.asking ||
+          live.question != was.question ||
+          live.options.length != was.options.length;
+      _live.value = live;
+      if (rows) setState(() {});
     });
   }
 
-  void _onLog() {
-    setState(() {});
-    _follow();
-  }
-
-  void _follow() {
-    if (!_atBottom) return;
-    // Lazily built rows change the extent as they appear: settle twice.
-    for (final d in [Duration.zero, const Duration(milliseconds: 80)]) {
-      Future.delayed(d, () {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        });
-      });
-    }
-  }
+  void _onLog() => setState(() {});
 
   void _toBottom() {
     setState(() => _atBottom = true);
-    _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-    _follow();
+    _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
   @override
   Widget build(BuildContext context) {
     final items = log.items;
-    if (log.loaded && log.path.isEmpty) {
-      return _empty('Nothing here yet: send Claude a message below.\nIts start-up screen (a folder trust question, say) is under Terminal at the top right.');
+    if (log.loaded && log.path.isEmpty && log.queued.isEmpty) {
+      return _empty('Nothing here yet: send ${widget.terms.session(widget.tab.session)?.toolName ?? 'the agent'} a message below.\nIts start-up screen (a folder trust question, say) is under Terminal at the top right.');
     }
     if (!log.loaded) return _empty('Reading the conversation…');
-    final extra = (_live.status != null ? 1 : 0) + (_live.asking ? 1 : 0);
+    final queued = log.queued, live = _live.value;
+    // Rows from the bottom up, so the list is anchored at the newest end and
+    // never jumps as answers, tool rows and the working line come and go.
+    final tail = <(Key, Widget)>[
+      if (live.asking) (const ValueKey('ask'), _Ask(terms: widget.terms, tab: widget.tab, live: live)),
+      if (live.status != null) (const ValueKey('working'), _Working(_live)),
+      for (final q in queued.reversed)
+        (ValueKey('q:$q'), Padding(padding: const EdgeInsets.only(top: 10), child: _User(q, queued: true, sending: log.sending(q)))),
+    ];
+    final n = tail.length + items.length;
+    Key keyAt(int i) => i < tail.length ? tail[i].$1 : ObjectKey(items[items.length - 1 - (i - tail.length)]);
     return Stack(children: [
       ListView.builder(
         controller: _scroll,
+        reverse: true,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
-        itemCount: items.length + extra,
-        itemBuilder: (_, i) {
-          if (i >= items.length) {
-            return i == items.length && _live.status != null ? _Working(_live.status!) : _Ask(terms: widget.terms, tab: widget.tab, live: _live);
+        itemCount: n,
+        // Keys keep each row's state (selection, an open tool card, the
+        // spinner) with its row as rows are added below it.
+        findChildIndexCallback: (key) {
+          for (var i = 0; i < n; i++) {
+            if (keyAt(i) == key) return i;
           }
+          return null;
+        },
+        itemBuilder: (_, r) {
+          if (r < tail.length) return KeyedSubtree(key: tail[r].$1, child: tail[r].$2);
+          final i = items.length - 1 - (r - tail.length);
           final e = items[i];
           final prev = i > 0 ? items[i - 1].kind : '';
           final gap = e.kind == 'tool' && prev == 'tool' ? 2.0 : 10.0;
           return Padding(
+            key: ObjectKey(e),
             padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
             child: switch (e.kind) {
               'user' => _User(e.text),
@@ -166,27 +178,54 @@ class _ChatViewState extends State<ChatView> {
       );
 }
 
+/// Your message; a queued one (typed while Claude works) is outlined and
+/// labelled until Claude takes it in.
 class _User extends StatelessWidget {
-  const _User(this.text);
+  const _User(this.text, {this.queued = false, this.sending = false});
   final String text;
+  final bool queued, sending;
 
   @override
   Widget build(BuildContext context) => Align(
         alignment: Alignment.centerRight,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
-          margin: const EdgeInsets.only(top: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF223049),
-            borderRadius: BorderRadius.circular(18).copyWith(bottomRight: const Radius.circular(6)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Container(
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: queued ? C.bg : const Color(0xFF223049),
+              border: queued ? Border.all(color: const Color(0xFF223049), width: 1.5) : null,
+              borderRadius: BorderRadius.circular(18).copyWith(bottomRight: const Radius.circular(6)),
+            ),
+            child: SelectableText(text,
+                style: TextStyle(fontSize: 15, height: 1.4, color: queued ? C.dim : C.text)),
           ),
-          child: SelectableText(text, style: const TextStyle(fontSize: 15, height: 1.4, color: C.text)),
-        ),
+          if (queued)
+            Padding(
+              padding: const EdgeInsets.only(top: 3, right: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(sending ? Icons.arrow_upward_rounded : Icons.schedule_rounded, size: 12, color: C.dim),
+                const SizedBox(width: 4),
+                Text(sending ? 'Sending…' : 'Queued', style: const TextStyle(fontSize: 11.5, color: C.dim)),
+              ]),
+            ),
+        ]),
       );
 }
 
+MarkdownStyleSheet? _mdSheet;
+ThemeData? _mdTheme;
+
+// One sheet per theme: a new sheet makes every answer parse its markdown again.
 MarkdownStyleSheet _md(BuildContext context) {
+  final theme = Theme.of(context);
+  if (_mdSheet != null && identical(theme, _mdTheme)) return _mdSheet!;
+  _mdTheme = theme;
+  return _mdSheet = _mdBuild(context);
+}
+
+MarkdownStyleSheet _mdBuild(BuildContext context) {
   const body = TextStyle(fontSize: 15, height: 1.5, color: C.text);
   const code = TextStyle(fontFamily: mono, fontSize: 12.5, height: 1.45, color: Color(0xFFC0CAF5));
   return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
@@ -371,8 +410,8 @@ class _Note extends StatelessWidget {
 /// Claude's working line, the way the terminal shows it: a turning glyph and
 /// its word ("Pondering…") with a light running over it, then time and tokens.
 class _Working extends StatefulWidget {
-  const _Working(this.status);
-  final String status;
+  const _Working(this.live);
+  final ValueListenable<LiveScreen> live;
 
   @override
   State<_Working> createState() => _WorkingState();
@@ -390,12 +429,12 @@ class _WorkingState extends State<_Working> with SingleTickerProviderStateMixin 
 
   @override
   Widget build(BuildContext context) {
-    final (word, meta) = workingParts(widget.status);
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: AnimatedBuilder(
-        animation: _spin,
+        animation: Listenable.merge([_spin, widget.live]),
         builder: (context, _) {
+          final (word, meta) = workingParts(widget.live.value.status ?? '');
           final v = _spin.value;
           return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SizedBox(

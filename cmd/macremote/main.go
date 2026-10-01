@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -343,6 +344,9 @@ func cmdServe() {
 		if err := cmd.Start(); err != nil {
 			logf("caffeinate: %v", err)
 		}
+	}
+	if runtime.GOOS == "darwin" {
+		go keepDisplayOffWhenShut()
 	}
 	go func() {
 		for range time.Tick(5 * time.Second) {

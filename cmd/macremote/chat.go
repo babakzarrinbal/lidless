@@ -1,7 +1,7 @@
 package main
 
-// Claude Code's own transcript for a terminal, turned into chat items for the
-// phone. Claude writes ~/.claude/sessions/<pid>.json (its session id) and
+// Claude Code's own transcript for a terminal (or Copilot's: copilot.go),
+// turned into chat items for the phone. Claude writes ~/.claude/sessions/<pid>.json (its session id) and
 // ~/.claude/projects/<dir>/<session id>.jsonl (one JSON entry per line); the
 // agent finds the Claude process under the terminal's shell and reads that
 // file from a byte offset, so the phone only ever asks for what is new.
@@ -74,7 +74,14 @@ func claudeTranscript(pid int) string {
 // the transcript) and the offset to ask from next time. had is the transcript
 // the phone read last; when Claude has moved on to another one, it starts over.
 func chatRead(t *Term, from int64, had string) (map[string]any, error) {
-	path := claudeTranscript(t.cmd.Process.Pid)
+	copilot := t.Kind == "copilot"
+	parse := chatItems
+	var path string
+	if copilot {
+		path, parse = copilotTranscript(t.cmd.Process.Pid), copilotItems
+	} else {
+		path = claudeTranscript(t.cmd.Process.Pid)
+	}
 	if path == "" {
 		return map[string]any{"path": "", "next": 0, "items": []ChatItem{}}, nil
 	}
@@ -88,7 +95,13 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		return nil, err
 	}
 	size := st.Size()
-	reset := from <= 0 || from > size || had != filepath.Base(path)
+	// The file's name tells the phone when the agent moved to another
+	// conversation; every Copilot one is events.jsonl, so its folder's.
+	name := filepath.Base(path)
+	if copilot {
+		name = filepath.Base(filepath.Dir(path)) + ".jsonl"
+	}
+	reset := from <= 0 || from > size || had != name
 	if reset {
 		from = max(0, size-chatTail)
 	}
@@ -111,12 +124,15 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 	items := []ChatItem{}
 	var ctx *chatContext
 	for _, l := range bytes.Split(buf[:end], []byte{'\n'}) {
-		items = append(items, chatItems(l)...)
-		if c := lineContext(l); c != nil {
+		items = append(items, parse(l)...)
+		if c := lineContext(l); c != nil && !copilot {
 			ctx = c
 		}
 	}
-	out := map[string]any{"path": filepath.Base(path), "next": from + int64(end), "reset": reset, "items": items}
+	out := map[string]any{"path": name, "next": from + int64(end), "reset": reset, "items": items}
+	if copilot {
+		return out, nil
+	}
 	// Claude's status line knows the real window size; the transcript is the
 	// fallback (and is newer when Claude has answered since).
 	if st := readStatus(strings.TrimSuffix(filepath.Base(path), ".jsonl")); st != nil {
@@ -182,12 +198,21 @@ var (
 
 func chatItems(line []byte) []ChatItem {
 	var e struct {
-		Type             string `json:"type"`
-		Subtype          string `json:"subtype"`
-		IsMeta           bool   `json:"isMeta"`
-		IsSidechain      bool   `json:"isSidechain"`
-		IsCompactSummary bool   `json:"isCompactSummary"`
-		Message          struct {
+		Type             string          `json:"type"`
+		Subtype          string          `json:"subtype"`
+		IsMeta           bool            `json:"isMeta"`
+		IsSidechain      bool            `json:"isSidechain"`
+		IsCompactSummary bool            `json:"isCompactSummary"`
+		Operation        string          `json:"operation"` // queue-operation: enqueue, dequeue, remove
+		Content          json.RawMessage `json:"content"`   // queue-operation: the queued text
+		Attachment       struct {
+			Type   string          `json:"type"`
+			Prompt json.RawMessage `json:"prompt"`
+			Origin struct {
+				Kind string `json:"kind"`
+			} `json:"origin"`
+		} `json:"attachment"`
+		Message struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 	}
@@ -200,6 +225,41 @@ func chatItems(line []byte) []ChatItem {
 			return []ChatItem{{K: "note", Text: "Conversation compacted"}}
 		}
 		return nil
+	case "queue-operation":
+		// A message typed while Claude works waits in a queue: "queued" shows
+		// it as pending, "unqueue" takes it off once it is sent or dropped.
+		var s string
+		json.Unmarshal(e.Content, &s)
+		s = strings.TrimSpace(s)
+		if e.Operation == "enqueue" {
+			if s == "" || strings.HasPrefix(s, "<") { // hand-backs and notifications
+				return nil
+			}
+			return []ChatItem{{K: "queued", Text: s}}
+		}
+		return []ChatItem{{K: "unqueue", Text: s}}
+	case "attachment":
+		// A queued message Claude took in mid-turn.
+		a := e.Attachment
+		if a.Type != "queued_command" || a.Origin.Kind != "human" {
+			return nil
+		}
+		var s string
+		if json.Unmarshal(a.Prompt, &s) != nil {
+			var blocks []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			json.Unmarshal(a.Prompt, &blocks)
+			var parts []string
+			for _, b := range blocks {
+				if b.Type == "text" {
+					parts = append(parts, b.Text)
+				}
+			}
+			s = strings.Join(parts, "\n")
+		}
+		return userText(s)
 	case "user", "assistant":
 	default:
 		return nil

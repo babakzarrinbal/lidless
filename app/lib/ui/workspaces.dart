@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -50,7 +51,26 @@ class _WorkspaceListState extends State<WorkspaceList> {
   @override
   void initState() {
     super.initState();
+    widget.link.addListener(_online);
     widget.dirs.forEach(_fetch);
+  }
+
+  @override
+  void dispose() {
+    widget.link.removeListener(_online);
+    _retry?.cancel();
+    super.dispose();
+  }
+
+  Timer? _retry;
+
+  // Started (or switched to) before the Mac answered: ask once it does, and
+  // again shortly for any folder whose answer didn't come.
+  void _online() {
+    if (!widget.link.online) return;
+    for (final d in widget.dirs) {
+      if (!_convs.containsKey(d)) _fetch(d);
+    }
   }
 
   @override
@@ -70,7 +90,10 @@ class _WorkspaceListState extends State<WorkspaceList> {
       _seen.listed(list, _openTerms());
       setState(() => _convs[dir] = list);
     } catch (_) {
-      // an older agent, or the folder is gone: the open sessions still show
+      // An older agent, the folder is gone, or the link just came up: the
+      // open sessions still show; try once more in a moment.
+      if (!mounted || widget.load != null || (_retry?.isActive ?? false)) return;
+      _retry = Timer(const Duration(seconds: 3), _online);
     }
   }
 
@@ -278,8 +301,11 @@ class _RecentListState extends State<RecentList> {
     super.dispose();
   }
 
+  bool _failed = false;
+  int _tries = 0;
+
   void _online() {
-    if (_list == null && widget.link.online) _fetch();
+    if ((_list == null || _failed) && widget.link.online) _fetch();
   }
 
   Future<void> _fetch() async {
@@ -290,9 +316,13 @@ class _RecentListState extends State<RecentList> {
       final list = await (load ?? () => Conversation.recent(widget.link))();
       if (!mounted) return;
       _seen.listed(list, openTerms(widget.sessions));
+      _failed = false;
       setState(() => _list = list);
     } catch (_) {
-      if (mounted && _list == null) setState(() => _list = const []); // an older agent
+      // An older agent, or the link just came up: show none, ask again a few times.
+      _failed = true;
+      if (mounted && _list == null) setState(() => _list = const []);
+      if (mounted && widget.load == null && ++_tries < 5) Timer(const Duration(seconds: 3), _online);
     } finally {
       _busy = false;
     }

@@ -12,12 +12,14 @@ class Conversation {
         size = ((m['size'] as num?) ?? 0).toInt(),
         running = m['running'] == true,
         term = ((m['term'] as num?) ?? 0).toInt(),
-        dir = m['dir'] as String? ?? '';
+        dir = m['dir'] as String? ?? '',
+        tool = m['tool'] as String? ?? 'claude';
   final String id, title, prompt;
+  final String tool; // the agent that had it: claude or copilot
   final String dir; // the folder (the recent list only)
   final DateTime mtime;
   final int size;
-  final bool running; // a Claude process has it open
+  final bool running; // its agent has it open on the Mac
   final int term; // …in this app's terminal with this id (0: elsewhere)
 
   static Future<List<Conversation>> list(Link link, String dir) async {

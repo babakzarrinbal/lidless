@@ -32,6 +32,7 @@ type Conversation struct {
 	Prompt  string `json:"prompt,omitempty"` // the last thing typed
 	Mtime   int64  `json:"mtime"`
 	Size    int64  `json:"size"`
+	Tool    string `json:"tool,omitempty"` // "copilot"; Claude's leave it out
 	Running bool   `json:"running"`        // a Claude process has it open
 	Term    uint32 `json:"term,omitempty"` // …in this agent's terminal
 	Dir     string `json:"dir,omitempty"`  // the folder it ran in (recent list only)
@@ -113,7 +114,40 @@ func chatSessions(dir string, terms []*Term) ([]Conversation, error) {
 	if err != nil {
 		return nil, err
 	}
-	return conversations(files, terms, listMax, nil), nil
+	in := func(c *Conversation) bool { return c.Dir == dir }
+	return mergeConversations(conversations(files, terms, listMax, nil), copilotConversations(terms, listMax, in), listMax), nil
+}
+
+// mergeConversations is Claude's and Copilot's conversations together,
+// newest first, at most n.
+func mergeConversations(a, b []Conversation, n int) []Conversation {
+	out := append(a, b...)
+	sortConversations(out)
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+func sortConversations(l []Conversation) {
+	sort.SliceStable(l, func(i, j int) bool { return l[i].Mtime > l[j].Mtime })
+}
+
+// termOf is the agent's terminal that process pid runs in (0: elsewhere).
+func termOf(pid int, terms []*Term) uint32 {
+	shells := map[int]uint32{}
+	for _, t := range terms {
+		if t.cmd != nil && t.cmd.Process != nil {
+			shells[t.cmd.Process.Pid] = t.ID
+		}
+	}
+	pp := parents()
+	for p, n := pp[pid], 0; p > 1 && n < 20; p, n = pp[p], n+1 {
+		if id, ok := shells[p]; ok {
+			return id
+		}
+	}
+	return 0
 }
 
 // chatRecent is the newest conversations of every folder, each with the
@@ -121,10 +155,11 @@ func chatSessions(dir string, terms []*Term) ([]Conversation, error) {
 func chatRecent(terms []*Term, n int, keep func(dir string) bool) []Conversation {
 	home, _ := os.UserHomeDir()
 	files, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", "*.jsonl"))
-	return conversations(files, terms, n, func(c *Conversation) bool {
+	claude := conversations(files, terms, n, func(c *Conversation) bool {
 		c.Dir = transcriptCwd(c.path)
 		return c.Dir != "" && keep(c.Dir)
 	})
+	return mergeConversations(claude, copilotConversations(terms, n, func(c *Conversation) bool { return keep(c.Dir) }), n)
 }
 
 // transcriptCwd is the folder Claude ran in, from the transcript's first
@@ -152,13 +187,6 @@ func transcriptCwd(path string) string {
 // takes, with their titles and whether (and where) Claude has them open.
 func conversations(files []string, terms []*Term, n int, keep func(*Conversation) bool) []Conversation {
 	running := claudeRunning()
-	shells := map[int]uint32{}
-	for _, t := range terms {
-		if t.cmd != nil && t.cmd.Process != nil {
-			shells[t.cmd.Process.Pid] = t.ID
-		}
-	}
-	var pp map[int]int
 	list := []Conversation{}
 	for _, f := range files {
 		st, err := os.Stat(f)
@@ -168,7 +196,7 @@ func conversations(files []string, terms []*Term, n int, keep func(*Conversation
 		c := Conversation{ID: strings.TrimSuffix(filepath.Base(f), ".jsonl"), Mtime: st.ModTime().Unix(), Size: st.Size(), path: f}
 		list = append(list, c)
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Mtime > list[j].Mtime })
+	sortConversations(list)
 	out := list[:0]
 	for _, c := range list {
 		if len(out) == n {
@@ -178,16 +206,7 @@ func conversations(files []string, terms []*Term, n int, keep func(*Conversation
 			continue
 		}
 		if pid, ok := running[c.ID]; ok {
-			c.Running = true
-			if pp == nil {
-				pp = parents()
-			}
-			for p, n := pp[pid], 0; p > 1 && n < 20; p, n = pp[p], n+1 {
-				if id, ok := shells[p]; ok {
-					c.Term = id
-					break
-				}
-			}
+			c.Running, c.Term = true, termOf(pid, terms)
 		}
 		c.Title, c.Prompt = conversationTitle(c.path, c.Size)
 		out = append(out, c)

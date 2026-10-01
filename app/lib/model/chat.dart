@@ -1,6 +1,8 @@
 // The agent's conversation as chat items, read from Claude Code's transcript
 // on the Mac (`chat.read`), plus what only the live screen shows: whether
 // Claude is working, and a question it is waiting on.
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:xterm/xterm.dart';
 
@@ -23,6 +25,8 @@ class ChatEntry {
 
 class ChatLog extends ChangeNotifier {
   final items = <ChatEntry>[];
+  final queued = <String>[]; // typed while Claude works, not taken in yet
+  final _local = <String>{}; // sent from here, not in the transcript yet
   final _tools = <String, ChatEntry>{};
   String path = ''; // the transcript's file name; '' until Claude has one
   int next = 0;
@@ -44,17 +48,49 @@ class ChatLog extends ChangeNotifier {
     }
   }
 
+  /// Shows a message sent from the phone at once, until the transcript has
+  /// it (as a message or queued). One the transcript never shows as typed (a
+  /// / command, say) goes away by itself.
+  void sent(String text) {
+    final s = text.trim();
+    if (s.isEmpty || s.startsWith('/') || s.startsWith('!') || queued.contains(s)) return;
+    queued.add(s);
+    _local.add(s);
+    notifyListeners();
+    Timer(const Duration(seconds: 20), () {
+      if (_local.remove(s) && queued.remove(s)) notifyListeners();
+    });
+  }
+
+  /// Sent from the phone but not yet seen in the transcript.
+  bool sending(String text) => _local.contains(text);
+
   void apply(Map r) {
+    if ((r['path'] as String? ?? '').isEmpty && path.isNotEmpty) {
+      // The Mac lost sight of Claude's file for a moment (or Claude quit):
+      // keep the conversation on screen rather than blank it.
+      return;
+    }
     final reset = r['reset'] == true || r['path'] != path;
     if (reset) {
       items.clear();
+      queued
+        ..clear()
+        ..addAll(_local);
       _tools.clear();
     }
     path = r['path'] as String? ?? '';
     next = (r['next'] as num?)?.toInt() ?? 0;
     var changed = reset || !loaded;
     for (final m in (r['items'] as List? ?? const []).cast<Map>()) {
-      if (m['k'] == 'result') {
+      final text = m['text'] as String? ?? '';
+      if (m['k'] == 'queued') {
+        if (!_local.remove(text)) queued.add(text);
+      } else if (m['k'] == 'unqueue') {
+        // Sent or dropped: the matching one, or the oldest when it doesn't say.
+        final i = text.isEmpty ? (queued.isEmpty ? -1 : 0) : queued.indexOf(text);
+        if (i >= 0) queued.removeAt(i);
+      } else if (m['k'] == 'result') {
         final t = _tools[m['id']];
         if (t == null) continue; // its call is before what was read
         t.result = m['text'] as String? ?? '';
@@ -62,6 +98,10 @@ class ChatLog extends ChangeNotifier {
       } else {
         final e = ChatEntry.from(m);
         if (e.kind == 'tool') _tools[e.id] = e;
+        if (e.kind == 'user') {
+          queued.remove(e.text);
+          _local.remove(e.text);
+        }
         items.add(e);
       }
       changed = true;
