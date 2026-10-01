@@ -35,14 +35,17 @@ class ChatLog extends ChangeNotifier {
   ContextUse? ctx; // how full Claude's context window is, once it has answered
   TokenUse? used; // the tokens this conversation used, and on which accounts
 
+  bool _gone = false; // the terminal ended: nothing more to read
+
   Future<void> poll(Link link, int term) async {
-    if (_busy || !link.online) return;
+    if (_busy || _gone || !link.online) return;
     _busy = true;
     try {
       final r = await link.call('chat.read', {'id': term, 'from': next, 'path': path});
       if (r is Map) apply(r);
+    } on RpcError catch (e) {
+      _gone = e.code == 'gone'; // else the Mac went away for a moment: the next poll tries again
     } catch (_) {
-      // The terminal ended or the Mac went away; the next poll tries again.
     } finally {
       _busy = false;
     }
