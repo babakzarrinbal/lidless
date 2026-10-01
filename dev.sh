@@ -11,6 +11,9 @@
 #   ./dev.sh brew-publish [version] build, then a GitHub release + the formula in the tap ($BREW_OWNER/homebrew-macremote, via gh)
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
 #   ./dev.sh relay-pin             print the relay certificate pin
+#   ./dev.sh site-build            build/site: the Lidless page + the release APK
+#   ./dev.sh site-deploy           build it, serve it on the box (:8462) → https://lidless.zarrinbal.org
+#   ./dev.sh site-dns              once: Cloudflare A record + Origin Rule for that page
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
 #   ./dev.sh app-test              flutter test
 #   ./dev.sh app-analyze           flutter analyze
@@ -167,6 +170,57 @@ cmd_relay-deploy() {
   ssh "$BOX" mkdir -p /opt/macremote
   scp -q bin/relay-linux-amd64 deploy/Dockerfile.relay deploy/compose.yml "$BOX":/opt/macremote/
   ssh "$BOX" 'cd /opt/macremote && docker compose up -d --build 2>&1 | tail -3 && sleep 2 && docker logs --tail 3 macremote-relay'
+}
+
+# The Lidless page (site/) + the release APK, served by nginx on the box's
+# :8462 behind Cloudflare at https://$SITE. Placeholders come from the APK.
+SITE=lidless.zarrinbal.org
+SITE_PORT=8462
+cmd_site-build() {
+  local apk=app/build/app/outputs/flutter-apk/app-release.apk out=build/site
+  [ -f "$apk" ] || cmd_apk
+  rm -rf "$out" && mkdir -p "$out" && cp site/* "$out/" && cp "$apk" "$out/lidless.apk"
+  python3 - "$out/index.html" "$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)" \
+    "$(awk '{printf "%.0f", $1/1048576}' <<<"$(stat -f%z "$apk")")" "$(shasum -a 256 "$apk" | cut -d' ' -f1)" \
+    "your.server:$RELAY_PORT" "$(cmd_relay-pin)" <<'PY'
+import sys
+p, *v = sys.argv[1:]
+t = open(p).read()
+for k, x in zip(["@VERSION@", "@SIZE_MB@", "@SHA256@", "@RELAY@", "@PIN@"], v):
+    assert k in t and x, k
+    t = t.replace(k, x)
+open(p, "w").write(t)
+PY
+  echo "build/site: $(ls "$out" | tr '\n' ' ')"
+}
+
+cmd_site-deploy() { # never touches :443
+  cmd_site-build
+  ssh "$BOX" 'mkdir -p /opt/lidless/www /opt/lidless/tls && cd /opt/lidless/tls && [ -f cert.pem ] ||
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
+      -subj "/CN=lidless" -keyout key.pem -out cert.pem 2>/dev/null; chmod 644 /opt/lidless/tls/*.pem'
+  scp -q deploy/site/compose.yml deploy/site/nginx.conf "$BOX":/opt/lidless/
+  rsync -az --delete build/site/ "$BOX":/opt/lidless/www/
+  ssh "$BOX" "cd /opt/lidless && docker compose up -d 2>&1 | tail -1 && docker exec lidless-site nginx -s reload 2>/dev/null; sleep 1; curl -sk -o /dev/null -w 'origin :$SITE_PORT %{http_code}\n' https://127.0.0.1:$SITE_PORT/healthz"
+  curl -s -o /dev/null -w "https://$SITE %{http_code}\n" "https://$SITE/" || true
+}
+
+# Once: the A record (proxied) and the Origin Rule sending https://$SITE to
+# :$SITE_PORT, added next to the console's rule. Token from ~/.config/cloud/cf.env.
+cmd_site-dns() {
+  local tok zone=00436c43a4772a0789eda4900949f726 api=https://api.cloudflare.com/client/v4 rs
+  tok=$(set +x; source ~/.config/cloud/cf.env; echo "${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}")
+  cf() { curl -s -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' "$@"; }
+  if [ "$(cf "$api/zones/$zone/dns_records?type=A&name=$SITE" | jq '.result|length')" = 0 ]; then
+    cf -X POST "$api/zones/$zone/dns_records" --data "{\"type\":\"A\",\"name\":\"$SITE\",\"content\":\"${BOX#*@}\",\"proxied\":true,\"ttl\":1}" | jq -r '"dns: \(.success)"'
+  else echo "dns: $SITE exists"; fi
+  rs=$(cf "$api/zones/$zone/rulesets/phases/http_request_origin/entrypoint")
+  if jq -e --arg h "$SITE" '.result.rules[]? | select(.expression | contains($h))' <<<"$rs" >/dev/null; then
+    echo "origin rule: exists"
+  else
+    cf -X POST "$api/zones/$zone/rulesets/$(jq -r .result.id <<<"$rs")/rules" --data "{\"action\":\"route\",\"expression\":\"(http.host eq \\\"$SITE\\\")\",\"description\":\"lidless page -> :$SITE_PORT on the server\",\"action_parameters\":{\"origin\":{\"port\":$SITE_PORT}}}" |
+      jq -r '"origin rule: \(.success) \(.errors|map(.message)|join(","))"'
+  fi
 }
 
 cmd_vectors() { gorun linux arm64 go run ./cmd/noisevec > app/test/noise_vectors.json && echo "wrote app/test/noise_vectors.json"; }

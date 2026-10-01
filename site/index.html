@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lidless · your Mac's AI agents, in your pocket</title>
+<meta name="description" content="Drive Claude Code, Copilot CLI, terminals and files on your Mac from your Android phone. End-to-end encrypted. Works with the lid closed.">
+<meta property="og:title" content="Lidless">
+<meta property="og:description" content="Close the lid. Keep the agents working. Your Mac's terminals, files and AI coding sessions on your phone.">
+<meta name="theme-color" content="#0d1117">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+@font-face { font-family: "JB"; src: url(JetBrainsMono-Regular.ttf) format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "JB"; src: url(JetBrainsMono-Bold.ttf) format("truetype"); font-weight: 700; font-display: swap; }
+:root {
+  --bg: #0d1117; --bg2: #121822; --card: #161d29; --line: #253042;
+  --fg: #c0caf5; --dim: #8b95b8; --blue: #7aa2f7; --green: #9ece6a;
+  --amber: #e0af68; --purple: #bb9af7; --red: #f7768e;
+  --mono: "JB", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, .mono { font-family: var(--mono); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+/* nav */
+nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); background: rgba(13,17,23,.78); border-bottom: 1px solid rgba(37,48,66,.6); }
+nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 20px var(--mono); color: var(--fg); letter-spacing: -.02em; }
+.brand img { width: 32px; height: 32px; border-radius: 8px; }
+.brand:hover { text-decoration: none; }
+.navlinks { display: flex; gap: 22px; align-items: center; font-size: 15px; }
+.navlinks a.plain { color: var(--dim); }
+@media (max-width: 720px) { .navlinks a.plain { display: none; } }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 12px; font: 700 16px var(--sans); border: 1px solid transparent; cursor: pointer; transition: transform .15s, box-shadow .15s; }
+.btn:hover { text-decoration: none; transform: translateY(-1px); }
+.btn.primary { background: var(--green); color: #0d1117; box-shadow: 0 8px 30px -8px rgba(158,206,106,.55); }
+.btn.ghost { border-color: var(--line); color: var(--fg); background: rgba(22,29,41,.6); }
+.btn.small { padding: 8px 14px; font-size: 14px; border-radius: 10px; }
+.btn svg { width: 20px; height: 20px; }
+
+/* hero */
+.hero { position: relative; padding: 72px 0 40px; }
+.hero::before { content: ""; position: absolute; inset: -200px -20% auto; height: 700px; background:
+  radial-gradient(600px 300px at 20% 30%, rgba(122,162,247,.18), transparent 70%),
+  radial-gradient(500px 280px at 80% 20%, rgba(158,206,106,.12), transparent 70%); pointer-events: none; }
+.hero .wrap { position: relative; display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; }
+@media (max-width: 900px) { .hero .wrap { grid-template-columns: 1fr; } .hero { padding-top: 44px; } }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font: 400 13px var(--mono); color: var(--green); background: rgba(158,206,106,.08); border: 1px solid rgba(158,206,106,.25); padding: 5px 12px; border-radius: 99px; }
+.eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+h1 { font: 700 clamp(40px, 6.4vw, 70px)/1.04 var(--mono); letter-spacing: -.045em; margin: 22px 0 20px; }
+h1 .lid { color: var(--blue); }
+h1 .on { color: var(--green); }
+.lede { font-size: 19px; color: var(--dim); max-width: 34em; margin: 0 0 30px; }
+.lede b { color: var(--fg); font-weight: 600; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.meta { margin-top: 14px; font: 13px var(--mono); color: var(--dim); }
+
+/* phone */
+.phone { justify-self: center; width: 300px; max-width: 100%; aspect-ratio: 9/18.5; border-radius: 42px; padding: 11px; background: linear-gradient(160deg, #2a3446, #121822); box-shadow: 0 40px 80px -30px rgba(0,0,0,.8), 0 0 0 1px #2c3850, 0 0 80px -20px rgba(122,162,247,.35); transform: rotate(2.5deg); }
+.screen { height: 100%; border-radius: 32px; background: #0b0f15; overflow: hidden; display: flex; flex-direction: column; font: 11.5px/1.5 var(--mono); }
+.sbar { display: flex; justify-content: space-between; padding: 10px 18px 6px; color: var(--dim); font-size: 10.5px; }
+.stitle { display: flex; align-items: center; gap: 8px; padding: 6px 14px 10px; border-bottom: 1px solid #1c2433; color: var(--fg); font-weight: 700; font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+.stitle small { margin-left: auto; color: var(--dim); font-weight: 400; }
+.chat { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.you { align-self: flex-end; background: #1d2a44; color: var(--fg); padding: 7px 10px; border-radius: 12px 12px 3px 12px; max-width: 85%; font-family: var(--sans); font-size: 12px; }
+.bot { color: var(--fg); }
+.bot .k { color: var(--purple); }
+.tool { border-left: 2px solid var(--line); padding-left: 8px; color: var(--dim); }
+.tool b { color: var(--blue); font-weight: 400; }
+.tool .add { color: var(--green); } .tool .del { color: var(--red); }
+.status { color: var(--amber); display: flex; gap: 6px; }
+.spin { display: inline-block; width: 1ch; }
+.bar { margin: 0 10px 12px; display: flex; gap: 8px; align-items: center; background: #151c28; border: 1px solid #222c3d; border-radius: 14px; padding: 9px 12px; color: var(--dim); font-family: var(--sans); font-size: 12px; }
+.bar span { flex: 1; }
+.bar .caret { width: 2px; height: 14px; background: var(--blue); animation: pulse 1s steps(1) infinite; }
+.bar .send { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); }
+
+/* sections */
+section { padding: 70px 0; }
+.kicker { font: 13px var(--mono); color: var(--blue); text-transform: uppercase; letter-spacing: .14em; }
+h2 { font: 700 clamp(28px, 4vw, 40px)/1.15 var(--mono); letter-spacing: -.035em; margin: 10px 0 14px; }
+.sub { color: var(--dim); max-width: 40em; margin: 0 0 36px; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+.card { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: 18px; padding: 22px; transition: border-color .2s, transform .2s; }
+.card:hover { border-color: #34435c; transform: translateY(-2px); }
+.card .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 14px; font: 700 18px var(--mono); }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p { margin: 0; color: var(--dim); font-size: 15px; }
+.c-green { background: rgba(158,206,106,.12); color: var(--green); }
+.c-blue { background: rgba(122,162,247,.12); color: var(--blue); }
+.c-amber { background: rgba(224,175,104,.12); color: var(--amber); }
+.c-purple { background: rgba(187,154,247,.12); color: var(--purple); }
+.c-red { background: rgba(247,118,142,.12); color: var(--red); }
+
+/* how */
+.how { background: var(--bg2); border-block: 1px solid var(--line); }
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 14px; margin: 10px 0 30px; }
+.node { text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 12px; }
+.node .big { font-size: 30px; }
+.node b { display: block; margin-top: 6px; font-family: var(--mono); }
+.node small { color: var(--dim); font-size: 13px; }
+.wire { font: 12px var(--mono); color: var(--dim); text-align: center; min-width: 90px; }
+.wire::before { content: ""; display: block; height: 2px; margin-bottom: 8px; background: repeating-linear-gradient(90deg, var(--blue) 0 8px, transparent 8px 14px); background-size: 28px 2px; animation: flow 1s linear infinite; }
+@keyframes flow { to { background-position: 28px 0; } }
+.e2e { text-align: center; font: 13px var(--mono); color: var(--green); border: 1px dashed rgba(158,206,106,.4); border-radius: 12px; padding: 10px; }
+@media (max-width: 720px) { .flow { grid-template-columns: 1fr; } .wire { padding: 4px 0; } .wire::before { width: 2px; height: 26px; margin: 0 auto 6px; background: repeating-linear-gradient(180deg, var(--blue) 0 8px, transparent 8px 14px); } }
+
+/* steps */
+.steps { display: grid; gap: 16px; counter-reset: s; }
+.step { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+.step::before { counter-increment: s; content: counter(s); width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font: 700 22px var(--mono); background: rgba(122,162,247,.12); color: var(--blue); }
+.step h3 { margin: 2px 0 6px; font-size: 19px; }
+.step p { margin: 0 0 12px; color: var(--dim); font-size: 15px; }
+.step p:last-child { margin-bottom: 0; }
+.step p code { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .step { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 18px; } .step::before { width: 40px; height: 40px; font-size: 18px; } }
+.term { position: relative; background: #0a0e14; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; padding-right: 76px; font: 13.5px/1.7 var(--mono); overflow-x: auto; white-space: pre; color: var(--fg); }
+.term .p { color: var(--green); user-select: none; }
+.term .c { color: #5c6680; }
+.copy { position: absolute; top: 9px; right: 9px; font: 12px var(--mono); background: #1a2232; color: var(--dim); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.copy:hover { color: var(--fg); }
+.copy.ok { color: var(--green); border-color: rgba(158,206,106,.4); }
+
+/* faq */
+details { border-bottom: 1px solid var(--line); padding: 16px 2px; }
+summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 20px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; font: 400 22px/1 var(--mono); color: var(--blue); transition: transform .2s; }
+details[open] summary::after { transform: rotate(45deg); }
+details p { color: var(--dim); margin: 10px 0 0; max-width: 46em; }
+
+footer { padding: 40px 0 60px; color: var(--dim); font-size: 13px; border-top: 1px solid var(--line); }
+footer .wrap { display: grid; gap: 10px; }
+footer code { word-break: break-all; color: var(--fg); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="icon.svg" alt="">lidless</a>
+    <div class="navlinks">
+      <a class="plain" href="#features">Features</a>
+      <a class="plain" href="#how">How it works</a>
+      <a class="plain" href="#start">Get started</a>
+      <a class="btn primary small" href="lidless.apk" download>Get the app</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><i></i>Claude Code · Copilot CLI · any terminal</span>
+      <h1>Close the <span class="lid">lid</span>.<br>Keep the agents <span class="on">working</span>.</h1>
+      <p class="lede">Lidless puts your Mac's <b>AI coding sessions, terminals and files on your phone</b>.
+        Start Claude Code from the couch, check on it in line at the café, and pick the
+        same conversation up on your laptop when you're back. End-to-end encrypted, no open ports.</p>
+      <div class="ctas">
+        <a class="btn primary" href="lidless.apk" download>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18a.38.38 0 00-.66-.38l-1.86 3.22a11.4 11.4 0 00-9.84 0L5.22 5.92a.38.38 0 10-.66.38L6.4 9.48A10.8 10.8 0 001 18h22a10.8 10.8 0 00-5.4-8.52zM7 15.25a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5zm10 0a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z"/></svg>
+          Download for Android</a>
+        <a class="btn ghost" href="#start">Set up your Mac →</a>
+      </div>
+      <div class="meta">v@VERSION@ · @SIZE_MB@ MB · Android 7+ · macOS with Homebrew</div>
+    </div>
+
+    <div class="phone" aria-hidden="true">
+      <div class="screen">
+        <div class="sbar"><span>9:41</span><span>▂▄▆ ◔ 87%</span></div>
+        <div class="stitle"><span class="dot"></span>relay-refactor<small>MacBook · Claude</small></div>
+        <div class="chat">
+          <div class="you">split the hub into rooms + claims, keep the tests green</div>
+          <div class="bot"><span class="k">●</span> On it. Reading the hub first.</div>
+          <div class="tool"><b>Read</b> cmd/relay/main.go<br><b>Edit</b> cmd/relay/hub.go <span class="add">+84</span> <span class="del">−31</span><br><b>Bash</b> go test ./... <span class="add">ok</span></div>
+          <div class="bot"><span class="k">●</span> Rooms and claims are separate now; 14 tests pass. Want the rate limiter moved too?</div>
+          <div class="status"><span class="spin">✻</span><span class="t">Refactoring the relay…</span></div>
+        </div>
+        <div class="bar"><span>Reply to Claude</span><i class="caret"></i><i class="send"></i></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="kicker">What you get</div>
+    <h2>Your whole Mac, minus the desk.</h2>
+    <p class="sub">Not a screen-share. A native app that talks to the agent on your Mac, so it's fast on mobile data and readable on a phone.</p>
+    <div class="grid">
+      <div class="card"><div class="ic c-green">✻</div><h3>AI sessions, live</h3><p>Claude Code and Copilot CLI with their answers as a chat, a live "working…" line, and the questions they ask you as buttons.</p></div>
+      <div class="card"><div class="ic c-blue">⇄</div><h3>Hand off anywhere</h3><p>Step away and the idle session is released, so you can resume the same conversation on your laptop or another phone. No drift, no duplicates.</p></div>
+      <div class="card"><div class="ic c-purple">▤</div><h3>Workspaces</h3><p>Sessions grouped by folder: running in green, unread in blue, the rest in gray. Yesterday's work is one tap away.</p></div>
+      <div class="card"><div class="ic c-amber">%</div><h3>Limits and tokens</h3><p>Claude's session and weekly limits, Copilot's monthly quota, and tokens used per account. See them before you hit them.</p></div>
+      <div class="card"><div class="ic c-green">&gt;_</div><h3>Real terminals and files</h3><p>Full xterm shells that keep running when you close the app, plus a file browser and a code editor for quick fixes.</p></div>
+      <div class="card"><div class="ic c-red">⏻</div><h3>Lid closed</h3><p>One switch keeps the Mac awake with the lid shut. Battery, power and the paired Macs are all in one sheet.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="how">
+  <div class="wrap">
+    <div class="kicker">How it works</div>
+    <h2>Nothing to open. Nothing to trust.</h2>
+    <p class="sub">The Mac dials out to a small relay, and so does your phone. The relay joins the two and forwards bytes it can't read. Your Mac needs no port forwarding, VPN or fixed address.</p>
+    <div class="flow">
+      <div class="node"><div class="big">📱</div><b>Lidless app</b><small>your phone</small></div>
+      <div class="wire">TLS, pinned</div>
+      <div class="node"><div class="big">⇆</div><b>Relay</b><small>forwards ciphertext</small></div>
+      <div class="wire">TLS, pinned</div>
+      <div class="node"><div class="big">💻</div><b>macremote</b><small>agent on your Mac</small></div>
+    </div>
+    <div class="e2e">Noise IK end-to-end between phone and Mac · keys never leave the devices · the relay can't read or fake a byte</div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="kicker">Get started</div>
+    <h2>Three minutes, start to finish.</h2>
+    <p class="sub">You need a Mac with <a href="https://brew.sh">Homebrew</a>, and Claude Code or Copilot CLI if you want the AI sessions.</p>
+    <div class="steps">
+      <div class="step"><div>
+        <h3>Install the app</h3>
+        <p><a href="lidless.apk" download>Download the APK</a> on your Android phone and open it. Allow your browser to install apps when Android asks. It shows up as <b>Mac Remote</b>.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Install the agent on your Mac</h3>
+        <p>In Terminal, run:</p>
+        <div class="term"><span class="p">$ </span>brew install babakzarrinbal/macremote/macremote
+<span class="p">$ </span>macremote setup @RELAY@ -pin @PIN@<button class="copy">copy</button></div>
+        <p>That points it at the relay, checks the relay's certificate, and starts the agent now and at every login.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Scan and go</h3>
+        <p><code>setup</code> ends with a QR code. In the app, tap <b>Pair</b> and scan it. To add more phones later, run <code>macremote pair</code>.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Keep it running</h3>
+        <p><code>setup</code> already runs the agent as a background service. It restarts if it ever stops, and starts again each time you log in, including after a reboot. Closing Terminal doesn't stop it. To check it, or to start it by hand:</p>
+        <div class="term"><span class="c"># is it running?  (macremote: started)</span>
+<span class="p">$ </span>brew services list | grep macremote
+<span class="p">$ </span>macremote status
+<span class="c"># start it now and at every login</span>
+<span class="p">$ </span>brew services start macremote<button class="copy">copy</button></div>
+        <p>To keep the Mac awake with the lid closed, so your agents keep working in your bag, run this (or flip the switch in the app's Mac sheet):</p>
+        <div class="term"><span class="c"># stay awake with the lid closed  (1 = on, 0 = back to normal)</span>
+<span class="p">$ </span>sudo pmset -a disablesleep 1<button class="copy">copy</button></div>
+        <p>The log is in <code>$(brew --prefix)/var/log/macremote.log</code>. If FileVault is on, a rebooted Mac waits for you to log in once, and the agent starts then.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="padding-top: 20px">
+  <div class="wrap">
+    <div class="kicker">Questions</div>
+    <h2>Good to know</h2>
+    <details><summary>Can the relay see my code or my prompts?</summary><p>No. The phone and the Mac set up a Noise IK channel with keys made on each device. The relay only sees which room is connected, from which IP address, and how many bytes pass. Each side checks the other's key, so the relay can't pretend to be your Mac.</p></details>
+    <details><summary>Can I run my own relay?</summary><p>Yes. It's one small Docker container on any server with an open port. Run <code>macremote setup your.server:8460</code> and the app follows, because the pairing code tells it where to connect.</p></details>
+    <details><summary>What happens when I close the app?</summary><p>Your sessions keep running on the Mac. A session that was idle releases its conversation, so your laptop can take over, and it starts again when you come back to it.</p></details>
+    <details><summary>Is there an iPhone app?</summary><p>Not yet. Android only for now.</p></details>
+    <details><summary>Does it work with the lid closed on battery?</summary><p>macOS normally sleeps when you close the lid. The switch in the app's Mac sheet turns that off (and back on). Keep an eye on the battery, which the same sheet shows.</p></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div><b class="mono" style="color:var(--fg)">lidless</b> · the Mac Remote app, v@VERSION@</div>
+    <div>APK SHA-256: <code>@SHA256@</code></div>
+    <div>Not affiliated with Anthropic, GitHub or Apple. Claude, Copilot and Mac are their owners' trademarks.</div>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.copy').forEach(b => b.addEventListener('click', () => {
+  const t = [...b.parentElement.childNodes].filter(n => n !== b && !(n.classList && n.classList.contains('c')))
+    .map(n => n.textContent).join('').split('\n').map(l => l.replace(/^\$ /, '').trim()).filter(Boolean).join('\n');
+  navigator.clipboard.writeText(t).then(() => { b.textContent = 'copied'; b.classList.add('ok'); setTimeout(() => { b.textContent = 'copy'; b.classList.remove('ok'); }, 1600); });
+}));
+// The working line cycles like Claude's spinner.
+const frames = ['·', '✢', '✳', '✶', '✻', '✽'], words = ['Refactoring the relay…', 'Running the tests…', 'Reading hub.go…', 'Thinking…'];
+const sp = document.querySelector('.spin'), st = document.querySelector('.status .t');
+let i = 0;
+if (sp && !matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(() => {
+  sp.textContent = frames[i % frames.length];
+  if (++i % 30 === 0) st.textContent = words[(i / 30) % words.length];
+}, 120);
+</script>
+</body>
+</html>
