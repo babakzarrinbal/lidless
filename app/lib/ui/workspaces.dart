@@ -196,10 +196,10 @@ class _WorkspaceListState extends State<WorkspaceList> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(46, 7, 16, 7),
           child: Row(children: [
-            StatusDot(_activity(c)),
+            StatusDot(_activity(c), size: StatusDot.row),
             const SizedBox(width: 10),
-            Icon(toolIcon(c.tool), size: 14, color: C.dim),
-            const SizedBox(width: 6),
+            Icon(toolIcon(c.tool), size: 15, color: C.dim),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(c.title.isEmpty ? '(untitled)' : c.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
@@ -425,15 +425,17 @@ class _RecentListState extends State<RecentList> {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(children: [
-          StatusDot(_activity(c)),
-          const SizedBox(width: 12),
+          StatusDot(_activity(c), size: StatusDot.row),
+          const SizedBox(width: 10),
+          Icon(toolIcon(c.tool), size: 17, color: C.dim),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(c.title.isEmpty ? '(untitled)' : c.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5)),
               const SizedBox(height: 2),
               Text(
-                '${tools[c.tool] ?? c.tool} · ${baseName(c.dir)}${open ? ' · open on the phone' : c.running ? ' · open on the Mac' : ''}',
+                '${baseName(c.dir)}${open ? ' · open on the phone' : c.running ? ' · open on the Mac' : ''}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: C.dim),
@@ -454,6 +456,9 @@ class StatusDot extends StatelessWidget {
   const StatusDot(this.activity, {super.key, this.size = 8, this.border});
   final Activity activity;
   final double size;
+
+  /// The dot in a session or conversation row.
+  static const double row = 12;
   final Color? border;
 
   static Color color(Activity a) => switch (a) {

@@ -652,9 +652,6 @@ class _HomeState extends State<Home> {
       );
 
   Widget _sessionTile(Session s, bool sel) {
-    final act = s.activity;
-    final flags = _prefs?.getString('sessFlags.${s.id}') ?? '';
-    final shells = s.shells.where((t) => !t.exited).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(30, 2, 8, 2),
       child: Material(
@@ -669,40 +666,15 @@ class _HomeState extends State<Home> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
             child: Row(children: [
-              Stack(clipBehavior: Clip.none, children: [
-                Icon(toolIcon(s.tool), size: 22, color: sel ? C.accent : C.text),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: StatusDot(
-                    act,
-                    size: 9,
-                    border: C.panel,
-                  ),
-                ),
-              ]),
-              const SizedBox(width: 14),
+              StatusDot(s.activity, size: StatusDot.row),
+              const SizedBox(width: 10),
+              Icon(toolIcon(s.tool), size: 18, color: sel ? C.accent : C.dim),
+              const SizedBox(width: 10),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  Text(
-                    [
-                      switch (act) {
-                        Activity.working => 'working',
-                        Activity.unread => 'waiting for you',
-                        Activity.read => 'open on the phone',
-                        Activity.closed => 'ended',
-                      },
-                      if (flags.isNotEmpty) flags,
-                      if (shells > 0) '$shells shell${shells == 1 ? '' : 's'}',
-                    ].join(' · '),
-                    maxLines: 2,
+                child: Text(s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: C.dim, fontSize: 12),
-                  ),
-                ]),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               ),
               IconButton(
                 tooltip: 'Close session',
