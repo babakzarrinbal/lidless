@@ -137,8 +137,8 @@ func sortConversations(l []Conversation) {
 func termOf(pid int, terms []*Term) uint32 {
 	shells := map[int]uint32{}
 	for _, t := range terms {
-		if t.cmd != nil && t.cmd.Process != nil {
-			shells[t.cmd.Process.Pid] = t.ID
+		if t.pid > 0 {
+			shells[t.pid] = t.ID
 		}
 	}
 	pp := parents()

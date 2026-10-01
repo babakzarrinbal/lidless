@@ -4,6 +4,7 @@
 #
 #   ./dev.sh doctor                is this Mac ready? (tools, untracked files, box ssh; docs/dev-setup.md)
 #   ./dev.sh go-check              go vet + tests (Docker)
+#   ./dev.sh go <args…>            any go command in Docker (e.g. go get, go test -run X ./cmd/macremote)
 #   ./dev.sh agent                 build bin/macremote (darwin/arm64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
 #   ./dev.sh mac-kit               build/MacRemote.zip: agent + install.sh for another Mac
@@ -98,6 +99,8 @@ cmd_go-check() {
   quiet go-vet-darwin gorun darwin arm64 go vet ./cmd/macremote
   quiet go-test gorun linux arm64 go test ./...
 }
+
+cmd_go() { gorun linux arm64 go "$@"; }
 
 cmd_agent() {
   quiet agent-build gorun darwin arm64 go build -trimpath -ldflags=-s -o bin/macremote ./cmd/macremote

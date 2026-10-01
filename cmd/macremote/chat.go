@@ -153,11 +153,11 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 // how to read its lines.
 func chatSource(t *Term) (path, name string, parse func([]byte) []ChatItem) {
 	if t.Kind == "copilot" {
-		path = copilotTranscript(t.cmd.Process.Pid)
+		path = copilotTranscript(t.pid)
 		// Every Copilot conversation is events.jsonl: its folder's name.
 		return path, filepath.Base(filepath.Dir(path)) + ".jsonl", copilotItems
 	}
-	path = claudeTranscript(t.cmd.Process.Pid)
+	path = claudeTranscript(t.pid)
 	// The file's name tells the phone when Claude moved to another conversation.
 	return path, filepath.Base(path), chatItems
 }

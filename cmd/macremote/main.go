@@ -10,6 +10,11 @@
 //	macremote install | uninstall                   LaunchAgent (starts at login)
 //	macremote status                                config + agent state
 //	macremote serve                                 run in the foreground
+//	macremote ls                                    the Mac's shared terminals
+//	macremote attach [id|folder]                    join one in this window (Ctrl-] leaves it)
+//	macremote kill <id>                             end one on every device
+//	macremote claude|copilot [args]                 start (or join) one, shared with the phones
+//	macremote shell-setup                           alias claude/copilot to the above in ~/.zshrc
 package main
 
 import (
@@ -38,7 +43,7 @@ func die(format string, a ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage")
+		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls|attach|kill|claude|copilot|shell-setup")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
@@ -65,6 +70,18 @@ func main() {
 		cmdStatusline(args)
 	case "usage":
 		cmdUsage()
+	case "hold":
+		cmdHold(args)
+	case "ls":
+		cmdLs()
+	case "attach":
+		cmdAttach(args)
+	case "kill":
+		cmdKill(args)
+	case "claude", "copilot":
+		cmdAgentCLI(os.Args[1], args)
+	case "shell-setup":
+		cmdShellSetup(args)
 	default:
 		die("unknown command %q", os.Args[1])
 	}
@@ -268,6 +285,7 @@ func cmdInstall() {
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
 	<key>ProcessType</key><string>Interactive</string>
+	<key>AbandonProcessGroup</key><true/>
 	<key>StandardOutPath</key><string>%s</string>
 	<key>StandardErrorPath</key><string>%s</string>
 </dict>
@@ -348,6 +366,8 @@ func cmdServe() {
 	}
 	st, _ := os.Stat(configPath())
 	a := &Agent{cfg: c, cfgMtime: st.ModTime(), host: computerName(), terms: newTerms(), sessions: map[*Session]struct{}{}}
+	a.terms.onChange = a.termsChanged
+	go a.terms.watch() // adopts the terminals that outlived the last agent
 	if c.KeepAwake {
 		// Prevent idle sleep for as long as this process lives.
 		cmd := exec.Command("caffeinate", "-i", "-w", strconv.Itoa(os.Getpid()))

@@ -390,6 +390,20 @@ func (s *Session) sendJSON(v any) {
 	s.queue(append([]byte{'J'}, b...))
 }
 
+// termsChanged tells every phone a terminal came or went (one a phone or the
+// laptop opened, or one that ended), so each lists it without reconnecting.
+func (a *Agent) termsChanged() {
+	a.mu.Lock()
+	ss := make([]*Session, 0, len(a.sessions))
+	for s := range a.sessions {
+		ss = append(ss, s)
+	}
+	a.mu.Unlock()
+	for _, s := range ss {
+		go s.sendJSON(map[string]any{"ev": "terms"})
+	}
+}
+
 func (s *Session) handle(m []byte) {
 	if len(m) == 0 {
 		return
@@ -469,9 +483,7 @@ func (s *Session) pump(t *Term, from int64, stop chan struct{}) {
 			continue
 		}
 		if exited {
-			t.mu.Lock()
-			code := t.code
-			t.mu.Unlock()
+			_, _, code := t.out.state()
 			s.sendJSON(map[string]any{"ev": "term.exit", "p": map[string]any{"id": t.ID, "code": code}})
 			return
 		}
@@ -585,9 +597,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		t.mu.Lock()
-		t.title = p.Title
-		t.mu.Unlock()
+		t.rename(p.Title)
 		return true, nil
 	case "term.close":
 		t, err := term()

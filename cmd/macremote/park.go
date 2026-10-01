@@ -13,10 +13,10 @@ import (
 
 // claudeIn is the Claude running in terminal t: its conversation and pid.
 func claudeIn(t *Term) (sid string, pid int) {
-	if t.cmd == nil || t.cmd.Process == nil {
+	shell := t.pid
+	if shell <= 0 {
 		return "", 0
 	}
-	shell := t.cmd.Process.Pid
 	var pp map[int]int
 	for id, p := range claudeRunning() {
 		if pp == nil {

@@ -1,47 +1,43 @@
 package main
 
+// The agent's view of the terminals. Each one runs in its own holder process
+// (hold.go), which outlives the agent; the agent is one of its clients. It
+// adopts every holder it finds, whoever started it (a phone, or
+// `macremote claude` on the laptop), and mirrors its output for the phones.
+
 import (
-	"math/rand/v2"
+	"encoding/binary"
+	"errors"
+	"net"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/creack/pty"
 )
 
-// ringKeep is how much output a terminal keeps for re-attaching phones.
-const ringKeep = 1 << 20
-
-// Term is a shell on a pty that outlives phone connections. Its output is an
-// append-only stream addressed by byte offset, so a phone can resume exactly
-// where it left off after a reconnect.
+// Term is the agent's end of one holder. Its output is an append-only stream
+// addressed by byte offset, so a phone resumes exactly where it left off.
 type Term struct {
 	ID      uint32
 	Created time.Time
 	Kind    string // the agent ("claude", "copilot") or "shell"; the phone groups terminals by Session
 	Session string
 	Dir     string
+	pid     int // the shell
+	run     string
+	out     *ring
 
 	mu       sync.Mutex
 	title    string
-	buf      []byte // the last ≤2*ringKeep bytes of output, ending at end
-	end      int64  // total bytes ever written
-	changed  chan struct{}
-	exited   bool
-	code     int
 	cols     uint16
 	rows     uint16
-	run      string // the command typed in first
 	parked   string // the command that brings a parked Claude back
 	parkedID string // its conversation
 
-	in  chan []byte
-	pty *os.File
-	cmd *exec.Cmd
+	conn net.Conn
+	send chan []byte // frames to the holder, in order
 }
 
 type TermInfo struct {
@@ -57,89 +53,67 @@ type TermInfo struct {
 }
 
 func (t *Term) info() TermInfo {
+	end, _, _ := t.out.state()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return TermInfo{t.ID, t.title, t.cols, t.rows, t.end, t.Kind, t.Session, t.Dir, t.parked != ""}
+	return TermInfo{t.ID, t.title, t.cols, t.rows, end, t.Kind, t.Session, t.Dir, t.parked != ""}
 }
 
-func (t *Term) append(p []byte) {
-	t.mu.Lock()
-	t.buf = append(t.buf, p...)
-	t.end += int64(len(p))
-	if len(t.buf) > 2*ringKeep {
-		t.buf = append([]byte(nil), t.buf[len(t.buf)-ringKeep:]...)
-	}
-	close(t.changed)
-	t.changed = make(chan struct{})
-	t.mu.Unlock()
+func (t *Term) read(from int64, max int) ([]byte, int64, bool, <-chan struct{}) {
+	return t.out.read(from, max)
 }
 
-// read returns up to max bytes from offset from. If from fell out of the
-// buffer, reading restarts at the oldest kept byte (off > from tells the
-// phone it missed output). With nothing to read it returns a channel that
-// closes on the next write, and exited once the shell is gone.
-func (t *Term) read(from int64, max int) (data []byte, off int64, exited bool, wait <-chan struct{}) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	start := t.end - int64(len(t.buf))
-	if from < start || from > t.end {
-		from = start
+func (t *Term) frame(typ byte, p []byte) {
+	b := make([]byte, 5, 5+len(p))
+	b[0] = typ
+	binary.BigEndian.PutUint32(b[1:], uint32(len(p)))
+	select {
+	case t.send <- append(b, p...):
+	default:
+		logf("term %d: queue full, dropped a %q frame of %d bytes", t.ID, typ, len(p))
 	}
-	n := t.end - from
-	if n > int64(max) {
-		n = int64(max)
-	}
-	if n > 0 {
-		i := from - start
-		data = append([]byte(nil), t.buf[i:i+n]...)
-	}
-	return data, from, t.exited && n == 0, t.changed
 }
 
 // write queues input for the shell. A program that is not reading its input
-// must not stall the phone's whole connection, so the pty write happens on
-// the terminal's own goroutine.
+// must not stall the phone's whole connection, so the holder gets it on the
+// terminal's own goroutine.
 func (t *Term) write(p []byte) {
-	select {
-	case t.in <- append([]byte(nil), p...):
-	default:
-		logf("term %d: input queue full, dropped %d bytes", t.ID, len(p))
+	for len(p) > 0 { // frames stay small
+		n := min(len(p), 32<<10)
+		t.frame('i', p[:n])
+		p = p[n:]
 	}
 }
 
+// resize is the phones' size; a laptop window attached to the same terminal
+// wins over it (see hold.go).
 func (t *Term) resize(cols, rows uint16) {
 	if cols == 0 || rows == 0 {
 		return
 	}
-	t.mu.Lock()
-	t.cols, t.rows = cols, rows
-	t.mu.Unlock()
-	pty.Setsize(t.pty, &pty.Winsize{Cols: cols, Rows: rows})
+	t.frame('r', sizeFrame(cols, rows, 'p'))
 }
 
-// hangup ends the shell's process group, then kills it if it lingers.
-func (t *Term) hangup() {
-	pid := t.cmd.Process.Pid
-	syscall.Kill(-pid, syscall.SIGHUP)
-	time.AfterFunc(3*time.Second, func() {
-		t.mu.Lock()
-		gone := t.exited
-		t.mu.Unlock()
-		if !gone {
-			syscall.Kill(-pid, syscall.SIGKILL)
-		}
-	})
+func (t *Term) rename(title string) {
+	t.mu.Lock()
+	t.title = title
+	t.mu.Unlock()
+	t.frame('t', []byte(title))
 }
+
+// hangup ends the shell's process group (the holder kills it if it lingers).
+func (t *Term) hangup() { t.frame('h', nil) }
 
 type Terms struct {
-	mu    sync.Mutex
-	next  uint32
-	terms map[uint32]*Term
+	mu       sync.Mutex
+	terms    map[uint32]*Term
+	adopting map[uint32]bool
+	spawning int
+	onChange func() // a terminal came or went
 }
 
 func newTerms() *Terms {
-	// Random start so ids from a previous agent run are never reused.
-	return &Terms{next: rand.Uint32N(1 << 30), terms: map[uint32]*Term{}}
+	return &Terms{terms: map[uint32]*Term{}, adopting: map[uint32]bool{}}
 }
 
 func (m *Terms) get(id uint32) *Term {
@@ -159,12 +133,7 @@ func (m *Terms) all() []*Term {
 }
 
 func (m *Terms) list() []TermInfo {
-	m.mu.Lock()
-	ts := make([]*Term, 0, len(m.terms))
-	for _, t := range m.terms {
-		ts = append(ts, t)
-	}
-	m.mu.Unlock()
+	ts := m.all()
 	sort.Slice(ts, func(i, j int) bool { return ts[i].Created.Before(ts[j].Created) })
 	out := make([]TermInfo, len(ts))
 	for i, t := range ts {
@@ -173,12 +142,18 @@ func (m *Terms) list() []TermInfo {
 	return out
 }
 
+func (m *Terms) changed() {
+	if m.onChange != nil {
+		m.onChange()
+	}
+}
+
 func shellEnv() []string {
 	env := []string{}
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch k {
-		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "XPC_FLAGS":
+		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "XPC_FLAGS", "MACREMOTE_TERM":
 			continue
 		}
 		env = append(env, kv)
@@ -190,83 +165,166 @@ func shellEnv() []string {
 	return env
 }
 
-// open starts a login shell in dir on a fresh pty. A non-empty run is typed
+// typedCommand is what to type into a new shell to start run: Copilot's
+// command needs the shell's PATH (bash's login profile often lacks
+// Homebrew's, zsh's has it), so it may change the shell too.
+func typedCommand(shell, kind, run string) (string, string, error) {
+	if kind != "copilot" {
+		return shell, run, nil
+	}
+	typed, err := copilotCommand(shell, run)
+	if err == nil {
+		return shell, typed, nil
+	}
+	if shell == "/bin/zsh" {
+		return "", "", err
+	}
+	if typed, err = copilotCommand("/bin/zsh", run); err != nil {
+		return "", "", err
+	}
+	return "/bin/zsh", typed, nil
+}
+
+// open starts a login shell in dir in a new holder. A non-empty run is typed
 // into it as the first command, so quitting that program leaves the shell.
 func (m *Terms) open(shell, dir string, cols, rows uint16, kind, session, run string) (*Term, error) {
 	if cols == 0 || rows == 0 {
 		cols, rows = 80, 24
 	}
-	typed := run
-	if kind == "copilot" {
-		var err error
-		if typed, err = copilotCommand(shell, run); err != nil {
-			// bash's login profile often lacks Homebrew's PATH; zsh's has it.
-			if shell == "/bin/zsh" {
-				return nil, err
-			}
-			if typed, err = copilotCommand("/bin/zsh", run); err != nil {
-				return nil, err
-			}
-			shell = "/bin/zsh"
-		}
-	}
-	cmd := exec.Command(shell, "-l")
-	cmd.Env = append(shellEnv(), "SHELL="+shell) // the last one wins
-	cmd.Dir = dir
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: cols, Rows: rows})
+	shell, typed, err := typedCommand(shell, kind, run)
 	if err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
-	m.next++
-	id := m.next
-	t := &Term{ID: id, Created: time.Now(), Kind: kind, Session: session, Dir: dir, changed: make(chan struct{}), cols: cols, rows: rows, pty: f, cmd: cmd, in: make(chan []byte, 1024)}
-	t.title = shell[strings.LastIndex(shell, "/")+1:]
-	t.run = run
-	if run != "" {
-		t.title = strings.Fields(run)[0]
-		t.in <- []byte(typed + "\r")
+	m.spawning++ // scan waits, so this call adopts its own terminal
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.spawning--
+		m.mu.Unlock()
+	}()
+	id, err := spawnHold(holdSpec{Shell: shell, Dir: dir, Kind: kind, Session: session, Run: run, Typed: typed, Cols: cols, Rows: rows})
+	if err != nil {
+		return nil, err
 	}
+	t, err := m.adopt(id)
+	if t == nil {
+		return nil, errors.Join(errors.New("the terminal ended at once"), err)
+	}
+	return t, nil
+}
+
+// watch adopts holders as they appear (a laptop's `macremote claude`, or
+// all of them after the agent restarts) and clears sockets left by holders
+// that died.
+func (m *Terms) watch() {
+	for {
+		m.scan()
+		time.Sleep(time.Second)
+	}
+}
+
+func (m *Terms) scan() {
+	for _, id := range holdIDs() {
+		m.mu.Lock()
+		skip := m.terms[id] != nil || m.adopting[id] || m.spawning > 0
+		m.mu.Unlock()
+		if skip {
+			continue
+		}
+		if _, err := m.adopt(id); err != nil && errors.Is(err, syscall.ECONNREFUSED) {
+			// Nobody listens: its holder was killed. A fresh one may not
+			// listen yet, so only an old file goes.
+			if st, err := os.Stat(sockPath(id)); err == nil && time.Since(st.ModTime()) > 10*time.Second {
+				os.Remove(sockPath(id))
+				logf("term %d: removed a dead terminal's socket", id)
+			}
+		}
+	}
+}
+
+// adopt connects to holder id and starts mirroring it. It returns nil
+// without error when the terminal is already adopted or has just ended.
+func (m *Terms) adopt(id uint32) (*Term, error) {
+	m.mu.Lock()
+	if m.terms[id] != nil || m.adopting[id] {
+		m.mu.Unlock()
+		return nil, nil
+	}
+	m.adopting[id] = true
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.adopting, id)
+		m.mu.Unlock()
+	}()
+	c, info, err := dialHold(id)
+	if err != nil {
+		return nil, err
+	}
+	if info.Exited {
+		c.Close()
+		return nil, nil
+	}
+	t := &Term{ID: id, Created: time.UnixMilli(info.Created), Kind: info.Kind, Session: info.Session, Dir: info.Dir,
+		pid: info.PID, run: info.Run, out: newRing(), title: info.Title, cols: info.Cols, rows: info.Rows,
+		conn: c, send: make(chan []byte, 1024)}
+	writeFrame(c, 'a', i64(0)) // everything it kept
+	m.mu.Lock()
 	m.terms[id] = t
 	m.mu.Unlock()
-
-	stopIn := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		for {
 			select {
-			case p := <-t.in:
-				if _, err := f.Write(p); err != nil {
+			case f := <-t.send:
+				c.SetWriteDeadline(time.Now().Add(30 * time.Second))
+				if _, err := c.Write(f); err != nil {
+					c.Close()
 					return
 				}
-			case <-stopIn:
+			case <-done:
 				return
 			}
 		}
 	}()
 	go func() {
-		defer close(stopIn)
-		b := make([]byte, 32<<10)
+		defer close(done)
+		code := -1 // gone without saying: the holder died
 		for {
-			n, err := f.Read(b)
-			if n > 0 {
-				t.append(b[:n])
-			}
+			typ, p, err := readFrame(c)
 			if err != nil {
 				break
 			}
+			switch typ {
+			case 'o':
+				if len(p) >= 8 {
+					t.out.write(int64(binary.BigEndian.Uint64(p)), p[8:])
+				}
+			case 's':
+				if len(p) >= 4 {
+					t.mu.Lock()
+					t.cols, t.rows = binary.BigEndian.Uint16(p), binary.BigEndian.Uint16(p[2:])
+					t.mu.Unlock()
+				}
+			case 'x':
+				if len(p) >= 4 {
+					code = int(int32(binary.BigEndian.Uint32(p)))
+				}
+			}
+			if typ == 'x' {
+				break
+			}
 		}
-		cmd.Wait()
-		f.Close()
-		t.mu.Lock()
-		t.exited = true
-		t.code = cmd.ProcessState.ExitCode()
-		close(t.changed)
-		t.changed = make(chan struct{})
-		t.mu.Unlock()
+		c.Close()
+		t.out.exit(code)
 		m.mu.Lock()
 		delete(m.terms, id)
 		m.mu.Unlock()
-		logf("term %d exited (%d)", id, t.code)
+		logf("term %d exited (%d)", id, code)
+		m.changed()
 	}()
+	logf("term %d: %s %s in %s", id, info.Kind, info.Title, info.Dir)
+	m.changed()
 	return t, nil
 }
