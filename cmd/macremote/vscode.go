@@ -9,10 +9,10 @@ package main
 // object has "customTitle" and "requests": each one's "message.text" is what
 // was typed and "response" the parts of the answer.
 //
-// Only VS Code can add to these chats: the phone reads them, and carries one
-// on in a shared terminal by handing its transcript to Copilot or Claude
-// (chat.handoff). They are listed only when the phone asks for them (older
-// apps would try to resume them in a terminal).
+// The phone reads them, and carries one on in a shared terminal by handing its
+// transcript to Copilot or Claude (chat.handoff); vscodemirror.go copies that
+// terminal's turns back into the chat. They are listed only when the phone
+// asks for them (older apps would try to resume them in a terminal).
 
 import (
 	"encoding/json"

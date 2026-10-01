@@ -44,7 +44,7 @@ func die(format string, a ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls|attach|kill|claude|copilot|shell-setup")
+		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls [--json]|attach|kill|claude|copilot|shell-setup|vscode")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
@@ -76,7 +76,7 @@ func main() {
 	case "reload":
 		cmdReload()
 	case "ls":
-		cmdLs()
+		cmdLs(args)
 	case "attach":
 		cmdAttach(args)
 	case "kill":
@@ -85,6 +85,8 @@ func main() {
 		cmdAgentCLI(os.Args[1], args)
 	case "shell-setup":
 		cmdShellSetup(args)
+	case "vscode":
+		cmdVSCode(args)
 	default:
 		die("unknown command %q", os.Args[1])
 	}
@@ -392,6 +394,7 @@ func cmdServe() {
 	a.terms.onChange = a.termsChanged
 	a.terms.onEvent = a.termEvent
 	go a.terms.watch() // adopts the terminals that outlived the last agent
+	go a.terms.mirrorVSCode()
 	if c.KeepAwake {
 		// Prevent idle sleep for as long as this process lives.
 		cmd := exec.Command("caffeinate", "-i", "-w", strconv.Itoa(os.Getpid()))

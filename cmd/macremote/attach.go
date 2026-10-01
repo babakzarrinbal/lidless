@@ -7,6 +7,7 @@ package main
 // running for everyone else.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,8 +26,15 @@ import (
 
 const detachKey = 0x1d // Ctrl-]
 
-func cmdLs() {
+func cmdLs(args []string) {
 	l := holdList()
+	if len(args) > 0 && args[0] == "--json" { // for the VS Code extension
+		if l == nil {
+			l = []holdInfo{}
+		}
+		json.NewEncoder(os.Stdout).Encode(l)
+		return
+	}
 	if len(l) == 0 {
 		fmt.Println("no shared terminals")
 		return
@@ -74,7 +82,7 @@ func cmdAttach(args []string) {
 			die("no shared terminals; start one with `macremote claude`")
 		}
 		fmt.Fprintln(os.Stderr, "which one? macremote attach <id>")
-		cmdLs()
+		cmdLs(nil)
 		os.Exit(1)
 	}
 	os.Exit(attachTerm(pick[0].ID))

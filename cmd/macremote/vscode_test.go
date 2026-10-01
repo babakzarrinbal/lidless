@@ -77,3 +77,59 @@ func TestVSCodeChat(t *testing.T) {
 		t.Error("a chat outside the shared folders was read")
 	}
 }
+
+func TestVSCodeMirror(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	id := "0fb1b9c7-9892-48c1-996a-b6de7726603c"
+	path := filepath.Join(home, id+".jsonl")
+	// VS Code's last line may lack its newline yet.
+	os.WriteFile(path, []byte(`{"kind":0,"v":{"requests":[{"requestId":"request_1","modelId":"copilot/auto","message":{"text":"fix it"},"response":[{"value":"On it."}]}]}}`), 0o644)
+
+	items := []ChatItem{
+		{K: "user", Text: "This carries on a conversation … " + vscodeCache() + "/" + id + ".md, then …"},
+		{K: "text", Text: "We were fixing the build."},
+		{K: "user", Text: "go on"},
+		{K: "tool", ID: "a", Name: "Bash", Text: "go test"},
+		{K: "result", ID: "a", Text: "fail", Err: true},
+		{K: "text", Text: "Fixed."},
+	}
+	turns := vscodeTurns(items, id, "copilot")
+	if len(turns) != 2 || turns[0].Prompt != "Continue on all devices" || !strings.Contains(turns[0].Answer, "(Copilot CLI)") ||
+		!strings.HasSuffix(turns[0].Answer, "We were fixing the build.") {
+		t.Fatalf("turns: %+v", turns)
+	}
+	if want := "- *Bash* `go test` (failed: `fail`)\n\nFixed."; turns[1] != (vscodeTurn{"go on", want}) {
+		t.Fatalf("turn 2: %+v", turns[1])
+	}
+
+	if err := vscodeWriteTurns(path, id, 7, turns); err != nil {
+		t.Fatal(err)
+	}
+	m, err := vscodeState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqs := vscodeRequests(m)
+	if len(reqs) != 3 || reqs[2]["requestId"] != "request_lidless-7-1" || vscodeTyped(reqs[2]) != "go on" ||
+		vscodeAnswer(reqs[2]) != turns[1].Answer || reqs[2]["modelId"] != "copilot/auto" {
+		t.Fatalf("requests: %+v", reqs)
+	}
+	if _, err := os.Stat(filepath.Join(vscodeCache(), id+".jsonl.bak")); err != nil {
+		t.Error("no backup:", err)
+	}
+
+	st, _ := os.Stat(path)
+	if err := vscodeWriteTurns(path, id, 7, turns); err != nil {
+		t.Fatal(err)
+	}
+	if st2, _ := os.Stat(path); st2.Size() != st.Size() {
+		t.Error("the same turns were written again")
+	}
+	turns[1].Answer += "\n\nAll green."
+	vscodeWriteTurns(path, id, 7, turns)
+	m, _ = vscodeState(path)
+	if reqs = vscodeRequests(m); len(reqs) != 3 || vscodeAnswer(reqs[2]) != turns[1].Answer {
+		t.Fatalf("answer not updated: %+v", reqs)
+	}
+}
