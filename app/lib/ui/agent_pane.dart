@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
 import '../model/terms.dart';
+import 'chat_view.dart';
 import 'terminal_panel.dart';
 import 'theme.dart';
 
@@ -37,6 +38,9 @@ class AgentPaneState extends State<AgentPane> {
   Terms get terms => widget.terms;
   TermTab? get tab => widget.session.agent;
   bool get _cli => widget.session.tool == 'cli';
+  bool get _canChat => widget.session.tool == 'claude';
+  bool _chatMode = true; // Claude shows as a chat; the terminal is one tap away
+  bool get _chat => _canChat && _chatMode && tab != null;
 
   @override
   void initState() {
@@ -92,15 +96,42 @@ class AgentPaneState extends State<AgentPane> {
     return Column(children: [
       Expanded(
         child: Stack(children: [
+          // The terminal stays laid out under the chat so its size, and
+          // Claude's screen, do not change when switching.
           Positioned.fill(
-            child: TermSurface(
-              key: _surface,
-              tab: t,
-              fontSize: widget.fontSize,
-              onFocus: widget.onFocus,
-              empty: terms.link.online ? 'Starting ${widget.session.toolName}…' : 'Waiting for your Mac…',
+            child: Offstage(
+              offstage: _chat,
+              child: TermSurface(
+                key: _surface,
+                tab: t,
+                fontSize: widget.fontSize,
+                onFocus: widget.onFocus,
+                empty: terms.link.online ? 'Starting ${widget.session.toolName}…' : 'Waiting for your Mac…',
+              ),
             ),
           ),
+          if (_chat) Positioned.fill(child: ColoredBox(color: C.bg, child: ChatView(terms: terms, tab: t!))),
+          if (_canChat && t != null)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Material(
+                color: C.raised.withValues(alpha: 0.92),
+                shape: const StadiumBorder(side: BorderSide(color: C.line)),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: () => setState(() => _chatMode = !_chatMode),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(_chat ? Icons.terminal_rounded : Icons.forum_outlined, size: 15, color: C.dim),
+                      const SizedBox(width: 5),
+                      Text(_chat ? 'Terminal' : 'Chat', style: const TextStyle(fontSize: 12, color: C.dim)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
           if (ended && terms.synced)
             Positioned(
               left: 0,
@@ -117,7 +148,7 @@ class AgentPaneState extends State<AgentPane> {
         ]),
       ),
       KeyBar(keys: [
-        TypingKey(surface: _surface),
+        if (!_chat) TypingKey(surface: _surface),
         TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
         TKey(label: '⇧tab', onTap: () => terms.type(t, '\x1b[Z')),
         ...arrowKeys(terms, t),

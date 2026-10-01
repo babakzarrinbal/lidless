@@ -587,6 +587,12 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		logf("%s closed terminal %d", s.device, t.ID)
 		t.hangup()
 		return true, nil
+	case "chat.read":
+		t, err := term()
+		if err != nil {
+			return nil, err
+		}
+		return chatRead(t, p.From, p.Path)
 	case "fs.list":
 		return fsList(roots, p.Path)
 	case "fs.read":

@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
 import '../net/link.dart';
+import 'chat.dart';
 
 class TermTab {
   TermTab(this.id, this.title, {required this.kind, required this.session, required this.dir}) {
@@ -24,6 +25,7 @@ class TermTab {
   String title;
   final terminal = Terminal(maxLines: 10000, mouseHandler: const WheelFix());
   final controller = TerminalController();
+  final chat = ChatLog(); // the agent's transcript, read on demand
   int next = 0; // next output byte offset we expect
   bool exited = false;
   int replayUntil = 0; // output below this offset was already answered once
