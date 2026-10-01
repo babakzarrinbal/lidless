@@ -204,7 +204,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Relay fix'), findsOneWidget);
-    expect(find.text('relay · open on the Mac'), findsOneWidget);
+    expect(find.text('Claude · relay · open on the Mac'), findsOneWidget);
     expect(find.text('Old app work'), findsNothing);
     await tester.tap(find.text('Old sessions (1)'));
     await tester.pump();

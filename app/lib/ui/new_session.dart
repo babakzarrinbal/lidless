@@ -31,7 +31,7 @@ class _NewSessionPageState extends State<NewSessionPage> {
   String? _cwd;
   List<Entry> _dirs = [];
   String? _error;
-  bool _loading = false, _starting = false, _flagsTouched = false;
+  bool _loading = false, _starting = false, _flagsTouched = false, _toolTouched = false;
   String _tool = 'claude';
   String? _shell; // null: the Mac's default
   ShellInfo? _shells;
@@ -91,10 +91,9 @@ class _NewSessionPageState extends State<NewSessionPage> {
       setState(() {
         _cwd = r['path'] as String;
         _dirs = entries;
-        if (!_flagsTouched) {
-          _tool = _prefs?.getString(_toolKey(_cwd!)) ?? _prefs?.getString('tool') ?? _tool;
-          _flags.text = _prefs?.getString(_flagsKey(_cwd!)) ?? '';
-        }
+        // A tool picked on this page stays while browsing folders.
+        if (!_toolTouched) _tool = _prefs?.getString(_toolKey(_cwd!)) ?? _prefs?.getString('tool') ?? _tool;
+        if (!_flagsTouched) _flags.text = _prefs?.getString(_flagsKey(_cwd!)) ?? '';
       });
     } on RpcError catch (e) {
       if (!mounted) return;
@@ -243,10 +242,11 @@ class _NewSessionPageState extends State<NewSessionPage> {
           selected: {_tool},
           onSelectionChanged: (v) => setState(() {
             _tool = v.first;
+            _toolTouched = true;
             _flagsTouched = false;
             final cwd = _cwd;
-            // Kept even if the start fails, so the folder's choice sticks.
-            if (cwd != null) _prefs?.setString(_toolKey(cwd), _tool);
+            // Kept even if the start fails, so the choice sticks.
+            _prefs?.setString('tool', _tool);
             _flags.text = cwd == null ? '' : _prefs?.getString(_flagsKey(cwd)) ?? '';
           }),
         ),
