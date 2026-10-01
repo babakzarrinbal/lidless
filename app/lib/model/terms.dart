@@ -28,12 +28,16 @@ class TermTab {
   final chat = ChatLog(); // the agent's transcript, read on demand
   int next = 0; // next output byte offset we expect
   bool exited = false;
+  int unseen = 0; // output bytes since the session was last on screen
   int replayUntil = 0; // output below this offset was already answered once
   bool _replaying = false;
   late final ByteConversionSink _dec;
   Timer? _resize;
 
   bool get agent => kind != 'shell';
+
+  /// The agent wrote more than a cursor blink while its session was not shown.
+  bool get unread => agent && unseen > 512;
 
   void note(String s) => terminal.write('\r\n\x1b[2m$s\x1b[0m\r\n');
 }
@@ -100,6 +104,7 @@ class Terms extends ChangeNotifier {
   // One-shot modifiers from the key bar: ⌃ control, ⌥ option (meta), ⌘ command.
   bool ctrl = false, alt = false, cmd = false;
   bool synced = false; // the Mac's list has been read at least once
+  String? _viewing; // the session on screen
   int _epoch = 0;
   bool _syncing = false;
   late final StreamSubscription _sub;
@@ -117,6 +122,15 @@ class Terms extends ChangeNotifier {
       }
     }
     return m.values.toList();
+  }
+
+  /// The session on screen: what it writes is read.
+  set viewing(String? id) {
+    if (id == _viewing) return;
+    _viewing = id;
+    for (final t in tabs) {
+      if (t.session == id) t.unseen = 0;
+    }
   }
 
   Session? session(String id) {
@@ -220,6 +234,11 @@ class Terms extends ChangeNotifier {
     // the shell already got answers to: don't answer them twice.
     t._replaying = t.next <= t.replayUntil;
     t._dec.add(d);
+    if (t.agent && !t._replaying && t.session != _viewing) {
+      final was = t.unread;
+      t.unseen += d.length;
+      if (!was && t.unread) notifyListeners();
+    }
     t._replaying = false;
   }
 

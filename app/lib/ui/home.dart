@@ -11,6 +11,7 @@ import 'files_panel.dart';
 import 'new_session.dart';
 import 'session_view.dart';
 import 'theme.dart';
+import 'workspaces.dart';
 
 /// The main screen: a side bar with the paired Macs and the Mac's sessions,
 /// and the selected session's view (agent, shells, files).
@@ -125,7 +126,13 @@ class _HomeState extends State<Home> {
 
   /// Shows a conversation picked from the folder's history: the session that
   /// already has it open, or a new session resuming it.
-  Future<void> _openConversation(Session from, Conversation c) async {
+  Future<void> _openConversation(Session from, Conversation c) =>
+      _resumeIn(from.dir, c, flagsOf: from.id);
+
+  /// Resumes a conversation in [dir], with the flags of session [flagsOf] or
+  /// else of the folder's newest session.
+  Future<void> _resumeIn(String dir, Conversation c, {String? flagsOf}) async {
+    _scaffold.currentState?.closeDrawer();
     final here = terms.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
     if (here != null) {
       _select(here.id);
@@ -146,9 +153,10 @@ class _HomeState extends State<Home> {
       );
       if (ok != true) return;
     }
-    final flags = resumeFlags(_prefs?.getString('sessFlags.${from.id}') ?? '', c.id);
+    flagsOf ??= terms.sessions.where((s) => s.dir == dir && s.tool == 'claude').lastOrNull?.id;
+    final flags = resumeFlags(_prefs?.getString('sessFlags.$flagsOf') ?? '', c.id);
     try {
-      final id = await terms.start(from.dir, flags, tool: 'claude');
+      final id = await terms.start(dir, flags, tool: 'claude');
       await _prefs?.setString('sessFlags.$id', flags);
       if (mounted) _select(id);
     } on RpcError catch (e) {
@@ -201,6 +209,7 @@ class _HomeState extends State<Home> {
           final all = terms.sessions;
           _prune(all);
           final cur = _currentOf(all);
+          terms.viewing = cur?.id;
           return Scaffold(
             key: _scaffold,
             drawer: _drawer(all, cur),
@@ -403,7 +412,7 @@ class _HomeState extends State<Home> {
               ),
               const Divider(height: 20),
               Row(children: [
-                Expanded(child: _section('Sessions on ${link.host}')),
+                Expanded(child: _section('Folders on ${link.host}')),
                 IconButton(
                   tooltip: 'New session',
                   icon: const Icon(Icons.add_rounded),
@@ -415,7 +424,21 @@ class _HomeState extends State<Home> {
                   padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: Text('None yet', style: TextStyle(color: C.dim)),
                 ),
-              for (final s in all) _sessionTile(s, s == cur),
+              WorkspaceList(
+                link: link,
+                prefs: _prefs,
+                mac: _mac,
+                sessions: all,
+                dirs: [
+                  ...{
+                    for (final s in all) s.dir,
+                    ...?_prefs?.getStringList('recentDirs:$_mac'),
+                  },
+                ],
+                tile: (s) => _sessionTile(s, s == cur),
+                onNew: (dir) => _newSession(dir: dir),
+                onResume: (dir, c) => _resumeIn(dir, c),
+              ),
             ]),
           ),
           const Divider(height: 1),
@@ -450,10 +473,11 @@ class _HomeState extends State<Home> {
 
   Widget _sessionTile(Session s, bool sel) {
     final live = s.agent != null && !s.agent!.exited;
+    final unread = !sel && (s.agent?.unread ?? false);
     final flags = _prefs?.getString('sessFlags.${s.id}') ?? '';
     final shells = s.shells.where((t) => !t.exited).length;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.fromLTRB(30, 2, 8, 2),
       child: Material(
         color: sel ? C.accent.withValues(alpha: .14) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
@@ -471,26 +495,26 @@ class _HomeState extends State<Home> {
                 Positioned(
                   right: -2,
                   bottom: -2,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: live ? C.green : C.dim,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: C.panel, width: 1.5),
-                    ),
+                  child: StatusDot(
+                    unread
+                        ? StatusDot.unread
+                        : live
+                            ? StatusDot.active
+                            : StatusDot.idle,
+                    size: 9,
+                    border: C.panel,
                   ),
                 ),
               ]),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(s.name,
+                  Text(s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   Text(
                     [
-                      tildePath(s.dir, link.home),
+                      live ? 'open on the phone' : 'ended',
                       if (flags.isNotEmpty) flags,
                       if (shells > 0) '$shells shell${shells == 1 ? '' : 's'}',
                     ].join(' · '),

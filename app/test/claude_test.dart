@@ -9,6 +9,8 @@ import 'package:macremote/net/store.dart';
 import 'package:macremote/ui/agent_extras.dart';
 import 'package:macremote/ui/chat_view.dart';
 import 'package:macremote/ui/new_session.dart';
+import 'package:macremote/ui/workspaces.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('the working line splits into its word and its numbers', () {
@@ -148,5 +150,55 @@ void main() {
     expect(find.text('Pondering…'), findsOneWidget);
     expect(find.textContaining('3s'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('folders list the open sessions, today\'s conversations, and fold older ones', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final link = Link(const MacPairing(relay: 'h:1', pin: '', room: '1', macPub: '', host: 'mac'), KeyPair.generate());
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    Conversation conv(String id, String title, int ago, {bool running = false}) =>
+        Conversation.from({'id': id, 'title': title, 'mtime': now - ago, 'running': running});
+    var listed = [conv('a', 'Fix the relay', 60, running: true), conv('b', 'Old work', 3 * 86400)];
+    Conversation? resumed;
+    Widget list() => MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: WorkspaceList(
+                link: link,
+                prefs: prefs,
+                mac: 'm',
+                sessions: const [],
+                dirs: const ['/Users/x/proj'],
+                tile: (s) => Text(s.id),
+                onNew: (_) {},
+                onResume: (_, c) => resumed = c,
+                load: (_) async => listed,
+              ),
+            ),
+          ),
+        );
+    await tester.pumpWidget(list());
+    await tester.pumpAndSettle();
+    expect(find.text('proj'), findsOneWidget);
+    expect(find.text('Fix the relay'), findsOneWidget);
+    expect(find.text('Old sessions (1)'), findsOneWidget);
+    expect(find.text('Old work'), findsNothing);
+    await tester.tap(find.text('Old sessions (1)'));
+    await tester.pump();
+    await tester.tap(find.text('Old work'));
+    expect(resumed!.id, 'b');
+    // Seen when first listed; written to since: unread.
+    expect(tester.widget<StatusDot>(find.byType(StatusDot).first).color, StatusDot.active);
+    listed = [conv('a', 'Fix the relay', 0, running: true), conv('b', 'Old work', 3 * 86400)];
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(list());
+    await tester.pumpAndSettle();
+    expect(tester.widget<StatusDot>(find.byType(StatusDot).first).color, StatusDot.unread);
+    // Folded away.
+    await tester.tap(find.text('proj'));
+    await tester.pump();
+    expect(find.text('Fix the relay'), findsNothing);
+    expect(prefs.getStringList('foldersShut:m'), ['/Users/x/proj']);
   });
 }
