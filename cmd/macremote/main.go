@@ -29,6 +29,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -72,6 +73,8 @@ func main() {
 		cmdUsage()
 	case "hold":
 		cmdHold(args)
+	case "reload":
+		cmdReload()
 	case "ls":
 		cmdLs()
 	case "attach":
@@ -295,17 +298,37 @@ func cmdInstall() {
 	if err := os.WriteFile(plistPath(), []byte(plist), 0o644); err != nil {
 		die("%v", err)
 	}
+	// Run from a phone's terminal, stopping the agent can end this process
+	// (an agent from before holders took its terminals with it), and the
+	// agent would never start again: a detached copy restarts it.
+	log, err := os.OpenFile(logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		die("%v", err)
+	}
+	cmd := exec.Command(bin, "reload")
+	cmd.Stdout, cmd.Stderr = log, log
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		die("%v", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		die("restarting the agent failed (%v); see %s", err, logPath())
+	}
+	fmt.Println("installed; the agent starts at login. Log:", logPath())
+}
+
+// cmdReload (re)starts the LaunchAgent; `install` runs it detached.
+func cmdReload() {
 	launchctl("bootout", domain()+"/"+label) // fine if it was not loaded
 	// The old agent may still be stopping: bootstrap then fails with EIO.
-	err = launchctl("bootstrap", domain(), plistPath())
+	err := launchctl("bootstrap", domain(), plistPath())
 	for i := 0; err != nil && i < 10; i++ {
 		time.Sleep(500 * time.Millisecond)
 		err = launchctl("bootstrap", domain(), plistPath())
 	}
 	if err != nil {
-		die("%v", err)
+		die("reload: %v", err)
 	}
-	fmt.Println("installed; the agent starts at login. Log:", logPath())
 }
 
 func cmdUninstall() {
