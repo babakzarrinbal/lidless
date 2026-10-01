@@ -35,21 +35,35 @@ class WatchService : Service() {
         } catch (_: Exception) {
             stopSelf()
         }
+        starting = false
+        if (stopWanted) stopSelf()
         return START_NOT_STICKY
     }
 
     companion object {
         private const val ID = 1
 
+        // Stopping a service Android still waits on to call startForeground
+        // crashes the app (ForegroundServiceDidNotStartInTimeException): back
+        // and away again within a moment. Such a stop waits for the start.
+        private var starting = false
+        private var stopWanted = false
+
         fun start(c: Context, text: String) {
             try {
                 val i = Intent(c, WatchService::class.java).putExtra("text", text)
                 if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i)
+                starting = true
+                stopWanted = false
             } catch (_: Exception) { // not allowed from the background: the app may still be up
             }
         }
 
         fun stop(c: Context) {
+            if (starting) {
+                stopWanted = true
+                return
+            }
             c.stopService(Intent(c, WatchService::class.java))
         }
     }
