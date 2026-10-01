@@ -151,7 +151,9 @@ class SessionViewState extends State<SessionView> {
   }
 
   void _dragEnd(Pane p) {
-    final px = _dragPx ?? 0;
+    // A tap also ends in a drag cancel; only a real drag may collapse.
+    final px = _dragPx;
+    if (px == null) return;
     _dragPx = null;
     setState(() {
       if (px < _minBody) {

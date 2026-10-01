@@ -22,7 +22,7 @@ class TermTab {
   final String kind; // the session's agent ('claude', 'copilot') or 'shell'
   final String session, dir;
   String title;
-  final terminal = Terminal(maxLines: 10000);
+  final terminal = Terminal(maxLines: 10000, mouseHandler: const WheelFix());
   final controller = TerminalController();
   int next = 0; // next output byte offset we expect
   bool exited = false;
@@ -34,6 +34,25 @@ class TermTab {
   bool get agent => kind != 'shell';
 
   void note(String s) => terminal.write('\r\n\x1b[2m$s\x1b[0m\r\n');
+}
+
+/// xterm 4.0 reports the mouse wheel as buttons 68/69 (shift + wheel); real
+/// terminals send 64/65, and full-screen apps such as Claude Code ignore the
+/// rest. Without this a swipe scrolls nothing in those apps.
+class WheelFix implements TerminalMouseHandler {
+  const WheelFix();
+
+  @override
+  String? call(TerminalMouseEvent e) {
+    if (!e.button.isWheel) return defaultMouseHandler(e);
+    final mode = e.state.mouseMode;
+    if (e.buttonState != TerminalMouseButtonState.down || mode == MouseMode.none || mode == MouseMode.clickOnly) {
+      return null;
+    }
+    final id = e.button.id - 4, x = e.position.x + 1, y = e.position.y + 1;
+    if (e.state.mouseReportMode == MouseReportMode.sgr) return '\x1b[<$id;$x;${y}M';
+    return '\x1b[M${String.fromCharCode(32 + id)}${String.fromCharCode(32 + x)}${String.fromCharCode(32 + y)}';
+  }
 }
 
 /// The coding agents a session can run, by terminal kind.

@@ -76,7 +76,7 @@ cmd_relay-deploy() {
 
 cmd_vectors() { gorun linux arm64 go run ./cmd/noisevec > app/test/noise_vectors.json && echo "wrote app/test/noise_vectors.json"; }
 
-cmd_app-test() { (cd app && quiet app-test flutter test); }
+cmd_app-test() { (cd app && quiet app-test flutter test "$@"); } # [file…]
 cmd_app-analyze() { (cd app && flutter analyze --no-pub 2>&1 | grep -E 'error|warning|info|issues found|No issues' | head -40); }
 
 cmd_apk() {
