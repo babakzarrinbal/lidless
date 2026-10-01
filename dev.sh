@@ -26,7 +26,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT=$PWD
 
-BOX=root@your.server
+# The server's address stays out of the repo: put RELAY_HOST=<ip or name> in
+# .server.env (untracked).
+[ -f .server.env ] && . ./.server.env
+RELAY_HOST=${RELAY_HOST:-}
+BOX=root@$RELAY_HOST
+need_box() { [ -n "$RELAY_HOST" ] || { echo "put RELAY_HOST=<the server> in .server.env" >&2; exit 1; }; }
 RELAY_PORT=8460
 BREW_OWNER=${BREW_OWNER:-babakzarrinbal}
 BREW_TAP=$BREW_OWNER/homebrew-macremote
@@ -82,7 +87,7 @@ cd "\$(dirname "\$0")"
 bin=./macremote-\$(uname -m)
 xattr -c "\$bin" 2>/dev/null || true
 chmod +x "\$bin"
-[ -f "\$HOME/.config/macremote/agent.json" ] || "\$bin" init -relay your.server:$RELAY_PORT -pin $pin
+[ -f "\$HOME/.config/macremote/agent.json" ] || "\$bin" init -relay $RELAY_HOST:$RELAY_PORT -pin $pin
 "\$bin" install
 mkdir -p "\$HOME/.local/bin"
 ln -sf "\$HOME/Library/Application Support/MacRemote/macremote" "\$HOME/.local/bin/macremote"
@@ -152,13 +157,13 @@ cmd_brew-publish() { # the official tap: tarballs on a release, the formula in F
   echo "  published v$v: brew install $BREW_OWNER/macremote/macremote"
 }
 
-cmd_relay-pin() { ssh "$BOX" docker exec macremote-relay /relay pin; }
+cmd_relay-pin() { need_box; ssh "$BOX" docker exec macremote-relay /relay pin; }
 
 cmd_agent-install() {
   cmd_agent
   if [ ! -f "$HOME/.config/macremote/agent.json" ]; then # keep pairings on reinstall
     local pin; pin=$(cmd_relay-pin)
-    bin/macremote init -relay your.server:$RELAY_PORT -pin "$pin"
+    bin/macremote init -relay "$RELAY_HOST:$RELAY_PORT" -pin "$pin"
   fi
   bin/macremote install
   mkdir -p "$HOME/.local/bin"
@@ -166,6 +171,7 @@ cmd_agent-install() {
 }
 
 cmd_relay-deploy() {
+  need_box
   quiet relay-build gorun linux amd64 go build -trimpath -ldflags=-s -o bin/relay-linux-amd64 ./cmd/relay
   ssh "$BOX" mkdir -p /opt/macremote
   scp -q bin/relay-linux-amd64 deploy/Dockerfile.relay deploy/compose.yml "$BOX":/opt/macremote/
@@ -180,21 +186,23 @@ cmd_site-build() {
   local apk=app/build/app/outputs/flutter-apk/app-release.apk out=build/site
   [ -f "$apk" ] || cmd_apk
   rm -rf "$out" && mkdir -p "$out" && cp site/* "$out/" && cp "$apk" "$out/lidless.apk"
-  python3 - "$out/index.html" "$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)" \
+  RELAY_HOST=$RELAY_HOST python3 - "$out/index.html" "$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)" \
     "$(awk '{printf "%.0f", $1/1048576}' <<<"$(stat -f%z "$apk")")" "$(shasum -a 256 "$apk" | cut -d' ' -f1)" <<'PY'
-import sys
+import os, sys
 p, *v = sys.argv[1:]
 t = open(p).read()
 for k, x in zip(["@VERSION@", "@SIZE_MB@", "@SHA256@"], v):
     assert k in t and x, k
     t = t.replace(k, x)
-assert "your.server" not in t and "@" + "RELAY" not in t, "server address in the page"
+host = os.environ.get("RELAY_HOST")
+assert not (host and host in t) and "@" + "RELAY" not in t, "server address in the page"
 open(p, "w").write(t)
 PY
   echo "build/site: $(ls "$out" | tr '\n' ' ')"
 }
 
 cmd_site-deploy() { # never touches :443
+  need_box
   cmd_site-build
   ssh "$BOX" 'mkdir -p /opt/lidless/www /opt/lidless/tls && cd /opt/lidless/tls && [ -f cert.pem ] ||
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
