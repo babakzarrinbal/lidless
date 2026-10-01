@@ -59,6 +59,14 @@ void main() {
     final l2 = LiveScreen.of(busy);
     expect(l2.asking, isFalse, reason: 'a numbered list in an answer is not a question');
     expect(l2.status, '✻ Thinking… (12s · esc to interrupt)');
+
+    final compacting = Terminal()..resize(80, 10);
+    compacting.write('> /compact\r\n\r\n✶ Compacting conversation… (8s)\r\n');
+    expect(LiveScreen.of(compacting).status, '✶ Compacting conversation… (8s)');
+    expect(workingParts('✶ Compacting conversation… (8s)'), ('Compacting conversation…', '8s'));
+    final done = Terminal()..resize(80, 10);
+    done.write('⏺ Done… more or less.\r\n\r\n✻ Worked for 12s\r\n');
+    expect(LiveScreen.of(done).status, isNull);
   });
 
   testWidgets('the chat shows messages, markdown and a tool row that opens', (tester) async {

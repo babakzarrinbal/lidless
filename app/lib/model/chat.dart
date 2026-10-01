@@ -157,6 +157,9 @@ class LiveScreen {
   bool get asking => options.isNotEmpty;
 
   static final _option = RegExp(r'^\s*(❯\s*)?(\d)\.\s+(.+?)\s*$');
+  // The spinner while it runs: "✻ Compacting conversation… (8s)" carries no
+  // "esc to interrupt"; once done it says "✻ Worked for 12s", with no "…".
+  static final _spinner = RegExp(r'^[·✢✳✶✻✽*]\s+\S[^…(]*…');
   static final _border = RegExp(r'^[\s│┃|╭╮╰╯─━┌┐└┘]+|[\s│┃|╭╮╰╯─━┌┐└┘]+$');
 
   static LiveScreen of(Terminal t) {
@@ -167,7 +170,7 @@ class LiveScreen {
     ];
     String? status;
     for (final l in lines) {
-      if (l.contains('esc to interrupt')) status = l.trim();
+      if (l.contains('esc to interrupt') || _spinner.hasMatch(l.trim())) status = l.trim();
     }
     // A choice Claude is waiting on: numbered options, one marked with ❯.
     // The marker keeps an ordinary numbered list in an answer from counting.
