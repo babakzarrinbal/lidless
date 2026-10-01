@@ -280,7 +280,7 @@ func cmdInstall() {
 	}
 	launchctl("bootout", domain()+"/"+label) // fine if it was not loaded
 	// The old agent may still be stopping: bootstrap then fails with EIO.
-	err := launchctl("bootstrap", domain(), plistPath())
+	err = launchctl("bootstrap", domain(), plistPath())
 	for i := 0; err != nil && i < 10; i++ {
 		time.Sleep(500 * time.Millisecond)
 		err = launchctl("bootstrap", domain(), plistPath())
