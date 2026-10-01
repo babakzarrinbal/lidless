@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:macremote/crypto/noise.dart';
@@ -18,6 +20,10 @@ class FakeLink extends Link {
   }
   final Map<String, dynamic> answers;
   final calls = <String>[];
+  final macEvents = StreamController<(String, dynamic)>.broadcast();
+
+  @override
+  Stream<(String, dynamic)> get events => macEvents.stream;
 
   @override
   Future<dynamic> call(String method, [Map<String, dynamic>? params, Duration timeout = const Duration(seconds: 45)]) async {

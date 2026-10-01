@@ -1,6 +1,8 @@
-// Terminals, grouped into Claude sessions. The shells live on the Mac and
-// outlive the connection: each tab remembers the byte offset it has seen and
-// resumes from there. A session is one folder with one Claude terminal and
+// Terminals, grouped into Claude sessions. The shells live on the Mac (each
+// in a holder process, see docs/architecture.md) and outlive the connection:
+// each tab remembers the byte offset it has seen and resumes from there. A
+// terminal opened anywhere (another phone, a laptop window) shows up here
+// too: the Mac sends {"ev":"terms"} and [Terms] adopts it. A session is one folder with one Claude terminal and
 // any number of plain shells, all tagged with the session id on the Mac.
 import 'dart:async';
 import 'dart:convert';
@@ -29,13 +31,12 @@ class TermTab {
   final chat = ChatLog(); // the agent's transcript, read on demand
   int next = 0; // next output byte offset we expect
   bool exited = false;
-  bool parked = false; // its Claude quit while idle; [Terms.unpark] brings it back
+  bool parked = false; // an older app quit its idle Claude; [Terms.unpark] brings it back
   int readTo = 0; // output below this offset was on screen
   int replayUntil = 0; // output below this offset was already answered once
   bool working = false; // the agent is thinking or writing
   bool _replaying = false;
   bool _fresh = false; // just adopted: its replay is old news
-  bool _hush = false; // quitting on purpose: what it prints is not news
   bool _told = false; // [Terms.onUnread] was called for this stop
   DateTime _typed = DateTime(0);
   late final ByteConversionSink _dec;
@@ -234,26 +235,7 @@ class Terms extends ChangeNotifier {
     try {
       final list = (await link.call('term.list') as List).cast<Map>();
       final read = synced ? const <String, dynamic>{} : await _loadRead();
-      final alive = {for (final m in list) (m['id'] as num).toInt(): m};
-      for (final t in tabs) {
-        if (!t.exited && !alive.containsKey(t.id)) {
-          t.exited = true;
-          t.note('[this terminal ended on the Mac]');
-        }
-      }
-      final known = {for (final t in tabs) t.id};
-      for (final m in list) {
-        final id = (m['id'] as num).toInt();
-        final session = m['session'] as String? ?? '';
-        if (known.contains(id) || session.isEmpty) continue; // not one of ours
-        final t = _make(id, m['title'] as String? ?? '',
-            kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? '');
-        // Read up to where the phone last showed it; one never shown is read.
-        final end = (m['end'] as num?)?.toInt() ?? 0;
-        t.readTo = min((read['$id'] as num?)?.toInt() ?? end, end);
-        t._fresh = true;
-        tabs.add(t);
-      }
+      final alive = _apply(list, read);
       // Output frames can arrive before the attach reply, so take the replay
       // boundary from the list.
       for (final t in tabs) {
@@ -278,6 +260,66 @@ class Terms extends ChangeNotifier {
           if (link.online && link.epoch == _epoch && _synced != _epoch) _sync();
         });
       }
+    }
+  }
+
+  /// Marks the tabs the Mac no longer has as ended and adopts the ones it has
+  /// that the phone does not; the Mac's terminals by id.
+  Map<int, Map> _apply(List<Map> list, Map<String, dynamic> read) {
+    final alive = {for (final m in list) (m['id'] as num).toInt(): m};
+    for (final t in tabs) {
+      if (!t.exited && !alive.containsKey(t.id)) {
+        t.exited = true;
+        t._settle?.cancel();
+        t.working = false;
+        t.note('[this terminal ended on the Mac]');
+      }
+    }
+    final known = {for (final t in tabs) t.id};
+    for (final m in list) {
+      final id = (m['id'] as num).toInt();
+      final session = m['session'] as String? ?? '';
+      if (known.contains(id) || session.isEmpty) continue; // not one of ours
+      final t = _make(id, m['title'] as String? ?? '',
+          kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? '');
+      // Read up to where the phone last showed it; one never shown is read.
+      final end = (m['end'] as num?)?.toInt() ?? 0;
+      t.readTo = min((read['$id'] as num?)?.toInt() ?? end, end);
+      t.replayUntil = end;
+      t.parked = m['parked'] == true;
+      t._fresh = true;
+      tabs.add(t);
+    }
+    return alive;
+  }
+
+  bool _refreshing = false, _again = false;
+
+  /// The Mac's terminals changed (one opened or ended, on any device): adopt
+  /// and attach the new ones; the others carry on as they are.
+  Future<void> _refresh() async {
+    if (!synced || _syncing || _synced != _epoch) return; // the sync after a connect covers it
+    if (_refreshing) {
+      _again = true;
+      return;
+    }
+    _refreshing = true;
+    try {
+      do {
+        _again = false;
+        final list = (await link.call('term.list') as List).cast<Map>();
+        if (_synced != _epoch) return; // reconnected meanwhile: that sync covers it
+        final before = {for (final t in tabs) t.id};
+        _apply(list, const {});
+        for (final t in tabs.where((t) => !before.contains(t.id) && !t.exited).toList()) {
+          _attach(t);
+        }
+        notifyListeners();
+      } while (_again);
+    } catch (_) {
+      // Offline or busy: the next event or reconnect brings it.
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -326,8 +368,8 @@ class Terms extends ChangeNotifier {
     // meanwhile is news.
     final old = t._fresh && t.next <= t.replayUntil;
     if (!old) t._fresh = false;
-    if (_onScreen(t) || t._hush || t.parked) t.readTo = t.next;
-    if (!t.agent || old || t._hush || t.parked) return;
+    if (_onScreen(t) || t.parked) t.readTo = t.next;
+    if (!t.agent || old || t.parked) return;
     // An echo of what was typed is not work.
     if (!t.working && DateTime.now().difference(t._typed) < const Duration(milliseconds: 400)) return;
     _busy(t);
@@ -438,14 +480,16 @@ class Terms extends ChangeNotifier {
       'cols': like?.viewWidth ?? 80,
       'rows': like?.viewHeight ?? 24,
     }) as Map;
-    final t = _make((info['id'] as num).toInt(), info['title'] as String? ?? '',
-        kind: kind, session: session, dir: info['dir'] as String? ?? dir);
-    tabs.add(t);
+    final id = (info['id'] as num).toInt();
+    // The Mac's "terms" event can bring it in first.
+    final had = tabs.where((t) => t.id == id).firstOrNull;
+    final t = had ?? _make(id, info['title'] as String? ?? '', kind: kind, session: session, dir: info['dir'] as String? ?? dir);
+    if (had == null) tabs.add(t);
     if (kind == 'shell') {
       _activeShell[session] = tabs.where((x) => x.session == session && !x.agent).length - 1;
     }
     notifyListeners();
-    await _attach(t);
+    if (had == null) await _attach(t);
     return t;
   }
 
@@ -519,32 +563,6 @@ class Terms extends ChangeNotifier {
     return conv;
   }
 
-  /// Quits the session's Claude while it is idle, so the conversation is free
-  /// for the laptop or another phone; the conversation, or null.
-  Future<String?> park(Session s) async {
-    final a = s.agent;
-    if (a == null || a.exited || a.parked || a.kind != 'claude') return null;
-    final live = LiveScreen.of(a.terminal);
-    if (live.status != null || live.asking) return null; // working, or asking
-    final dynamic r;
-    a._hush = true; // Claude saying goodbye is not news
-    try {
-      r = await link.call('term.park', {'id': a.id}, const Duration(seconds: 10));
-    } finally {
-      a._hush = false;
-      a.readTo = a.next;
-    }
-    final conv = r is Map ? r['conversation'] as String? ?? '' : '';
-    if (conv.isEmpty) return null;
-    a.parked = true;
-    a._settle?.cancel();
-    a.working = false;
-    a.note('[Claude quit while you were away, so the laptop or another phone can pick this conversation up. '
-        'It starts again when you come back or press a key.]');
-    notifyListeners();
-    return conv;
-  }
-
   /// Starts a parked Claude again. [take] quits a Claude that opened the
   /// conversation elsewhere meanwhile; without it that is an RpcError 'busy'.
   Future<void> unpark(Session s, {bool take = false}) async {
@@ -562,6 +580,10 @@ class Terms extends ChangeNotifier {
   }
 
   void _onEvent((String, dynamic) e) {
+    if (e.$1 == 'terms') {
+      _refresh();
+      return;
+    }
     if (e.$1 != 'term.exit') return;
     final p = e.$2 as Map;
     final id = (p['id'] as num).toInt();

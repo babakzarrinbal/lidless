@@ -147,8 +147,6 @@ class _HomeState extends State<Home> {
       _asked = true;
       Notify.ask(); // to say when a session needs you
     }
-    final was = _recent ? null : _currentOf(terms.sessions);
-    if (was != null && was.id != id) _leave(was);
     final to = terms.session(id);
     if (to != null) _enter(to);
     setState(() {
@@ -223,28 +221,32 @@ class _HomeState extends State<Home> {
       _select(here.id);
       return;
     }
+    // Running in a shared terminal it is a session here already (above); this
+    // one runs outside them: an editor, or a terminal without the alias.
     final name = tools[c.tool] ?? c.tool;
-    final canMove = c.tool == 'claude'; // chat.stop knows how to quit Claude only
+    final canTake = c.tool == 'claude'; // chat.stop knows how to quit Claude only
     if (c.running) {
       final how = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Open on the Mac'),
-          content: Text('$name has this conversation open on the Mac, in a terminal or in an editor.\n\n'
-              '${canMove ? 'Move here quits that $name (it saves first) and carries on here with everything so far.\n\n' : ''}'
-              'Open here too keeps both, but neither sees the other\'s new messages.'),
+          content: Text(canTake
+              ? 'Claude has this conversation open on the Mac outside a shared terminal (an editor, or a '
+                  'terminal without `macremote shell-setup`).\n\nTake over quits it (it saves first) and carries on '
+                  'in a shared terminal: here, on your other devices, and on the Mac with `macremote attach`.'
+              : '$name has this conversation open on the Mac outside a shared terminal. Opening it here too '
+                  'runs two copies, and neither sees the other\'s new messages.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            if (canMove) TextButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
-            if (canMove)
-              FilledButton(onPressed: () => Navigator.pop(ctx, 'move'), child: const Text('Move here'))
-            else
-              FilledButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, canTake ? 'take' : 'both'),
+              child: Text(canTake ? 'Take over' : 'Open here too'),
+            ),
           ],
         ),
       );
       if (how == null) return;
-      if (how == 'move') {
+      if (how == 'take') {
         try {
           await link.call('chat.stop', {'session': c.id}, const Duration(seconds: 15));
         } on RpcError catch (e) {
@@ -290,25 +292,12 @@ class _HomeState extends State<Home> {
 
   void _showRecent() {
     _scaffold.currentState?.closeDrawer();
-    final was = _recent ? null : _currentOf(terms.sessions);
-    if (was != null) _leave(was);
     setState(() => _recent = true);
   }
 
   SeenConversations get _seen => SeenConversations(_prefs, _mac);
 
-  /// Leaving a session: an idle Claude quits, so the conversation is free for
-  /// the laptop or another phone. Its last answer was seen here.
-  Future<void> _leave(Session s) async {
-    try {
-      final conv = await terms.park(s);
-      if (conv != null) _seen.readNow(conv);
-    } on RpcError catch (e) {
-      if (mounted) toast(context, e.message, error: true);
-    }
-  }
-
-  /// Coming back: a parked Claude starts again, unless the conversation was
+  /// Coming back: a Claude an older version parked starts again, unless the conversation was
   /// picked up elsewhere meanwhile; then it's the user's call.
   Future<void> _enter(Session s) async {
     if (s.agent?.parked != true || !_waking.add(s.id)) return;
@@ -334,10 +323,10 @@ class _HomeState extends State<Home> {
         builder: (ctx) => AlertDialog(
           title: const Text('Open on the Mac'),
           content: const Text('This conversation was picked up on the Mac (a terminal or an editor) while you were away.\n\n'
-              'Move here quits that Claude (it saves first) and carries on here.'),
+              'Take over quits that Claude (it saves first) and carries on here.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Leave it there')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Move here')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Take over')),
           ],
         ),
       );
