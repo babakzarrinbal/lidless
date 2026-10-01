@@ -1,0 +1,35 @@
+name: macremote
+description: "Terminal and files on your Mac, from the phone."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.3
+
+dependencies:
+  app_links: ^7.2.1
+  crypto: ^3.0.7
+  cryptography: ^2.9.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
+  mobile_scanner: ^7.3.0
+  re_editor: ^0.10.0
+  re_highlight: ^0.0.3
+  shared_preferences: ^2.5.5
+  xterm: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700

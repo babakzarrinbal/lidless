@@ -1,0 +1,254 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'crypto/noise.dart';
+import 'model/terms.dart';
+import 'net/link.dart';
+import 'net/store.dart';
+import 'ui/files_panel.dart';
+import 'ui/home.dart';
+import 'ui/pair.dart';
+import 'ui/theme.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: C.bg,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
+  runApp(const MacRemote());
+}
+
+class MacRemote extends StatefulWidget {
+  const MacRemote({super.key});
+  @override
+  State<MacRemote> createState() => _MacRemoteState();
+}
+
+class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
+  final _nav = GlobalKey<NavigatorState>();
+  final _auth = LocalAuthentication();
+  bool _ready = false, _locked = true, _authing = false, _canLock = true;
+  DateTime? _pausedAt;
+  KeyPair? _key;
+  Link? _link; // paired and connected (or reconnecting)
+  Link? _attempt; // a pairing in progress
+  Terms? _terms;
+  Files? _files;
+  String _name = 'Android phone';
+  StreamSubscription? _links;
+
+  static const _relockAfter = Duration(seconds: 60);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    final prefs = await SharedPreferences.getInstance();
+    _name = prefs.getString('deviceName') ?? _name;
+    _key = await Store.phoneKey();
+    final p = await Store.pairing();
+    try {
+      _canLock = await _auth.isDeviceSupported();
+    } catch (_) {
+      _canLock = false;
+    }
+    if (!_canLock) _locked = false;
+    if (p != null) _use(p);
+    setState(() => _ready = true);
+    _unlock();
+
+    final al = AppLinks();
+    _links = al.uriLinkStream.listen((u) => _onCode(u.toString()));
+  }
+
+  void _use(MacPairing p) {
+    final link = Link(p, _key!, deviceName: _name);
+    _link = link;
+    _terms = Terms(link);
+    _files = Files(link);
+    link.start();
+  }
+
+  void _drop() {
+    _terms?.dispose();
+    _files?.dispose();
+    _link?.dispose();
+    _terms = null;
+    _files = null;
+    _link = null;
+  }
+
+  // ---- lock ----
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _pausedAt ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final away = _pausedAt == null ? Duration.zero : DateTime.now().difference(_pausedAt!);
+      _pausedAt = null;
+      if (_canLock && !_authing && away > _relockAfter) {
+        setState(() => _locked = true);
+        _unlock();
+      }
+    }
+  }
+
+  Future<void> _unlock() async {
+    if (!_locked || _authing) return;
+    _authing = true;
+    try {
+      final ok = await _auth.authenticate(
+        localizedReason: 'Unlock Mac Remote',
+        biometricOnly: false,
+        persistAcrossBackgrounding: true,
+      );
+      if (ok && mounted) setState(() => _locked = false);
+    } on LocalAuthException catch (e) {
+      // No screen lock set up at all: let the user in rather than lock them out.
+      if (e.code == LocalAuthExceptionCode.noCredentialsSet && mounted) {
+        setState(() => _locked = false);
+      }
+    } catch (_) {
+    } finally {
+      _authing = false;
+      _pausedAt = null;
+    }
+  }
+
+  void _lockNow() {
+    if (!_canLock) return;
+    setState(() => _locked = true);
+    _unlock();
+  }
+
+  // ---- pairing ----
+
+  Future<void> _onCode(String code) async {
+    final MacPairing p;
+    try {
+      p = MacPairing.parse(code);
+    } catch (e) {
+      final ctx = _nav.currentContext;
+      if (ctx != null) toast(ctx, 'Not a valid pairing code', error: true);
+      return;
+    }
+    // Wait for the lock screen to go away before asking.
+    while (_locked && mounted) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    final ctx = _nav.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final name = await confirmPairing(ctx, p, _name, replacing: _link != null);
+    if (name == null) return;
+    _name = name;
+    (await SharedPreferences.getInstance()).setString('deviceName', name);
+    _attempt?.dispose();
+    final a = Link(p, _key!, deviceName: name);
+    a.onPaired = (paired) {
+      if (_attempt != a) return;
+      // Let the handshake callback finish before tearing this link down.
+      scheduleMicrotask(() {
+        a.dispose();
+        _attempt = null;
+        _drop();
+        _use(paired);
+        if (mounted) setState(() {});
+        HapticFeedback.mediumImpact();
+      });
+    };
+    setState(() => _attempt = a);
+    a.start();
+  }
+
+  void _cancelAttempt() {
+    _attempt?.dispose();
+    setState(() => _attempt = null);
+  }
+
+  Future<void> _unpair() async {
+    _drop();
+    await Store.forget();
+    _key = await Store.phoneKey(); // a fresh identity for the next pairing
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _links?.cancel();
+    _attempt?.dispose();
+    _drop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget body;
+    if (!_ready) {
+      body = const Scaffold();
+    } else if (_attempt != null || _link == null) {
+      body = PairScreen(onCode: _onCode, attempt: _attempt, onCancel: _cancelAttempt);
+    } else {
+      body = Home(
+        key: ObjectKey(_link),
+        link: _link!,
+        terms: _terms!,
+        files: _files!,
+        onLock: _lockNow,
+        onUnpair: _unpair,
+      );
+    }
+    return MaterialApp(
+      title: 'Mac Remote',
+      debugShowCheckedModeBanner: false,
+      theme: appTheme(),
+      navigatorKey: _nav,
+      home: body,
+      builder: (context, child) => Stack(children: [
+        child!,
+        if (_locked && _ready) _LockScreen(onUnlock: _unlock),
+      ]),
+    );
+  }
+}
+
+class _LockScreen extends StatelessWidget {
+  const _LockScreen({required this.onUnlock});
+  final VoidCallback onUnlock;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Material(
+        color: C.bg,
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.lock_rounded, size: 44, color: C.accent),
+            const SizedBox(height: 16),
+            const Text('Mac Remote is locked',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onUnlock,
+              icon: const Icon(Icons.fingerprint_rounded),
+              label: const Text('Unlock'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
