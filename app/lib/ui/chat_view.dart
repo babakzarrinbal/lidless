@@ -40,8 +40,9 @@ class _ChatViewState extends State<ChatView> {
     _attach();
     // The list is reversed: offset 0 is the newest end.
     _scroll.addListener(() {
-      final at = _scroll.position.pixels <= 80;
+      final p = _scroll.position, at = p.pixels <= 80;
       if (at != _atBottom) setState(() => _atBottom = at);
+      if (p.pixels >= p.maxScrollExtent - 400) _older(); // near the top: read back
     });
   }
 
@@ -79,6 +80,10 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _poll() => log.poll(widget.terms.link, widget.tab.id);
+
+  void _older() {
+    if (log.hasOlder) log.older(widget.terms.link, widget.tab.id);
+  }
 
   // The screen changes many times a second while Claude works: read the
   // transcript and the screen at most a few times a second.
@@ -124,8 +129,15 @@ class _ChatViewState extends State<ChatView> {
       for (final q in queued.reversed)
         (ValueKey('q:$q'), Padding(padding: const EdgeInsets.only(top: 10), child: _User(q, queued: true, sending: log.sending(q)))),
     ];
-    final n = tail.length + items.length;
-    Key keyAt(int i) => i < tail.length ? tail[i].$1 : ObjectKey(items[items.length - 1 - (i - tail.length)]);
+    // The top row: reading back further, or the conversation's start.
+    final top = log.hasOlder || (log.start == 0 && items.isNotEmpty);
+    final n = tail.length + items.length + (top ? 1 : 0);
+    const topKey = ValueKey('top');
+    Key keyAt(int i) => i < tail.length
+        ? tail[i].$1
+        : i - tail.length < items.length
+            ? ObjectKey(items[items.length - 1 - (i - tail.length)])
+            : topKey;
     return Stack(children: [
       ListView.builder(
         controller: _scroll,
@@ -142,6 +154,18 @@ class _ChatViewState extends State<ChatView> {
         },
         itemBuilder: (_, r) {
           if (r < tail.length) return KeyedSubtree(key: tail[r].$1, child: tail[r].$2);
+          if (r - tail.length >= items.length) {
+            if (log.hasOlder) scheduleMicrotask(_older); // shown: read the page before it
+            return Padding(
+              key: topKey,
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Center(
+                child: log.hasOlder
+                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: C.dim))
+                    : const Text('Start of the conversation', style: TextStyle(color: C.dim, fontSize: 12)),
+              ),
+            );
+          }
           final i = items.length - 1 - (r - tail.length);
           final e = items[i];
           final prev = i > 0 ? items[i - 1].kind : '';

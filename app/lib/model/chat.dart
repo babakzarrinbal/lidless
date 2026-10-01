@@ -28,8 +28,11 @@ class ChatLog extends ChangeNotifier {
   final queued = <String>[]; // typed while Claude works, not taken in yet
   final _local = <String>{}; // sent from here, not in the transcript yet
   final _tools = <String, ChatEntry>{};
+  final _results = <String, (String, bool)>{}; // results whose call is before what was read
   String path = ''; // the transcript's file name; '' until Claude has one
   int next = 0;
+  int? start; // where the earliest item begins in the transcript; null: an agent that can't read back
+  bool _older = false;
   bool loaded = false;
   bool _busy = false;
   ContextUse? ctx; // how full Claude's context window is, once it has answered
@@ -49,6 +52,69 @@ class ChatLog extends ChangeNotifier {
     } finally {
       _busy = false;
     }
+  }
+
+  /// Earlier messages than the first one shown, back to the conversation's start.
+  bool get hasOlder => (start ?? 0) > 0;
+
+  /// Reads the page before the earliest item (a page with nothing to show,
+  /// a huge line say, reads on). False: nothing more, or it failed.
+  Future<bool> older(Link link, int term) async {
+    if (_older || !hasOlder || !link.online) return false;
+    _older = true;
+    try {
+      for (var i = 0; i < 8 && hasOlder; i++) {
+        final at = start, had = path;
+        final r = await link.call('chat.older', {'id': term, 'before': at, 'path': had});
+        // The conversation was read again meanwhile: this page is not before it.
+        if (r is! Map || start != at || path != had || r['path'] != had) return false;
+        if (prepend(r) > 0) return true;
+      }
+      return false;
+    } on RpcError {
+      start = null; // gone, or an agent without chat.older
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      _older = false;
+    }
+  }
+
+  /// Puts a page read back before the items; how many it added.
+  int prepend(Map r) {
+    final page = <ChatEntry>[];
+    for (final m in (r['items'] as List? ?? const []).cast<Map>()) {
+      switch (m['k']) {
+        case 'queued' || 'unqueue':
+          break; // long taken in
+        case 'result':
+          final i = page.lastIndexWhere((e) => e.kind == 'tool' && e.id == m['id']);
+          final res = (m['text'] as String? ?? '', m['err'] == true);
+          if (i < 0) {
+            _results[m['id'] as String? ?? ''] = res; // its call is further back still
+          } else {
+            page[i]
+              ..result = res.$1
+              ..err = res.$2;
+          }
+        default:
+          final e = ChatEntry.from(m);
+          if (e.kind == 'tool') {
+            if (_results.remove(e.id) case (final text, final err)) {
+              e.result = text;
+              e.err = err;
+            }
+            _tools[e.id] = e;
+          }
+          page.add(e);
+      }
+    }
+    start = (r['start'] as num?)?.toInt() ?? 0;
+    items.insertAll(0, page);
+    notifyListeners();
+    return page.length;
   }
 
   /// Reads up to the transcript's end (a long one comes in chunks).
@@ -93,6 +159,8 @@ class ChatLog extends ChangeNotifier {
         ..clear()
         ..addAll(_local);
       _tools.clear();
+      _results.clear();
+      start = (r['start'] as num?)?.toInt();
     }
     path = r['path'] as String? ?? '';
     next = (r['next'] as num?)?.toInt() ?? 0;
@@ -107,7 +175,11 @@ class ChatLog extends ChangeNotifier {
         if (i >= 0) queued.removeAt(i);
       } else if (m['k'] == 'result') {
         final t = _tools[m['id']];
-        if (t == null) continue; // its call is before what was read
+        if (t == null) {
+          // Its call is before what was read: kept for when scrolling back reaches it.
+          _results[m['id'] as String? ?? ''] = (m['text'] as String? ?? '', m['err'] == true);
+          continue;
+        }
         t.result = m['text'] as String? ?? '';
         t.err = m['err'] == true;
       } else {

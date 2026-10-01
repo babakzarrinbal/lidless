@@ -8,6 +8,8 @@ import 'package:macremote/net/store.dart';
 import 'package:macremote/ui/chat_view.dart';
 import 'package:xterm/xterm.dart';
 
+import 'home_test.dart' show FakeLink;
+
 const _first = {
   'path': 'a.jsonl',
   'next': 100,
@@ -39,6 +41,55 @@ void main() {
     log.apply({'path': 'b.jsonl', 'next': 10, 'items': []});
     expect(log.items, isEmpty);
     expect(log.path, 'b.jsonl');
+  });
+
+  test('scrolling back reads earlier pages to the start, and their tools get results read before', () async {
+    final pages = [
+      {
+        'path': 'a.jsonl',
+        'start': 40,
+        'items': [
+          {'k': 'user', 'text': 'second'},
+          {'k': 'tool', 'id': 't0', 'name': 'Read', 'text': 'x'},
+          {'k': 'queued', 'text': 'long ago'},
+        ],
+      },
+      {
+        'path': 'a.jsonl',
+        'start': 0,
+        'items': [
+          {'k': 'user', 'text': 'first'},
+          {'k': 'tool', 'id': 'tz', 'name': 'Bash', 'text': 'ls'},
+          {'k': 'result', 'id': 'tz', 'text': 'a b'},
+        ],
+      },
+    ];
+    final link = _Pages(pages);
+    final log = ChatLog()
+      ..apply({
+        ..._first,
+        'start': 70,
+        'items': [
+          {'k': 'result', 'id': 't0', 'text': 'read it'},
+          ...(_first['items'] as List),
+        ],
+      });
+    expect(log.hasOlder, isTrue);
+    expect(await log.older(link, 1), isTrue);
+    expect(link.before, [70]);
+    expect(log.items.map((e) => e.text).take(2), ['second', 'x']);
+    expect(log.items[1].result, 'read it');
+    expect(log.queued, isEmpty);
+    expect(await log.older(link, 1), isTrue);
+    expect(log.items.first.text, 'first');
+    expect(log.items[1].result, 'a b');
+    expect(log.hasOlder, isFalse);
+    expect(await log.older(link, 1), isFalse);
+    expect(link.before, [70, 40]);
+
+    // An agent without chat.older: no reading back, no error.
+    final old = ChatLog()..apply(_first);
+    expect(old.hasOlder, isFalse);
   });
 
   test('the live screen finds a permission question and the working line', () {
@@ -115,4 +166,17 @@ void main() {
     expect(find.byTooltip('Copy the answer'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+class _Pages extends FakeLink {
+  _Pages(this.pages) : super({});
+  final List<Map> pages;
+  final before = <int>[];
+
+  @override
+  Future<dynamic> call(String method, [Map<String, dynamic>? params, Duration timeout = const Duration(seconds: 45)]) async {
+    expect(method, 'chat.older');
+    before.add(params!['before'] as int);
+    return pages.removeAt(0);
+  }
 }

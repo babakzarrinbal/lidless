@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -57,5 +58,43 @@ func TestCut(t *testing.T) {
 	c := cut(s)
 	if !strings.HasSuffix(c, "more bytes") || !strings.HasPrefix(c, "éé") {
 		t.Fatal(c[len(c)-40:])
+	}
+}
+
+func TestOlderItems(t *testing.T) {
+	var b strings.Builder
+	for i := range 3000 {
+		b.WriteString(`{"type":"user","message":{"role":"user","content":"message ` + strconv.Itoa(i) + `"}}` + "\n")
+	}
+	f := strings.NewReader(b.String())
+	// Back from the end, page by page, to the first message, each one once.
+	var got []string
+	for before := int64(b.Len()); before > 0; {
+		items, start, err := olderItems(f, before, chatItems)
+		if err != nil || start >= before {
+			t.Fatalf("before %d: start %d, %v", before, start, err)
+		}
+		page := []string{}
+		for _, it := range items {
+			page = append(page, it.Text)
+		}
+		got, before = append(page, got...), start
+	}
+	if len(got) != 3000 || got[0] != "message 0" || got[2999] != "message 2999" {
+		t.Fatalf("%d items, %q … %q", len(got), got[0], got[len(got)-1])
+	}
+	// A line longer than a page is skipped, and what is before it still comes.
+	long := `{"type":"user","message":{"content":"first"}}` + "\n" + `{"x":"` + strings.Repeat("y", chatPage+100) + `"}` + "\n"
+	r := strings.NewReader(long)
+	var texts []string
+	for before := int64(len(long)); before > 0; {
+		items, start, _ := olderItems(r, before, chatItems)
+		for _, it := range items {
+			texts = append(texts, it.Text)
+		}
+		before = start
+	}
+	if len(texts) != 1 || texts[0] != "first" {
+		t.Fatalf("got %q", texts)
 	}
 }

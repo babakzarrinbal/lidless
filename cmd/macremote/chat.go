@@ -21,6 +21,7 @@ import (
 const (
 	chatTail  = 1536 << 10 // first read: this much of the end of the file
 	chatChunk = 2 << 20    // later reads: at most this much at a time
+	chatPage  = 512 << 10  // scrolling back: this much before what the phone has
 	chatText  = 6 << 10    // tool details and results are cut to this
 )
 
@@ -75,13 +76,7 @@ func claudeTranscript(pid int) string {
 // the phone read last; when Claude has moved on to another one, it starts over.
 func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 	copilot := t.Kind == "copilot"
-	parse := chatItems
-	var path string
-	if copilot {
-		path, parse = copilotTranscript(t.cmd.Process.Pid), copilotItems
-	} else {
-		path = claudeTranscript(t.cmd.Process.Pid)
-	}
+	path, name, parse := chatSource(t)
 	if path == "" {
 		return map[string]any{"path": "", "next": 0, "items": []ChatItem{}}, nil
 	}
@@ -95,12 +90,6 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		return nil, err
 	}
 	size := st.Size()
-	// The file's name tells the phone when the agent moved to another
-	// conversation; every Copilot one is events.jsonl, so its folder's.
-	name := filepath.Base(path)
-	if copilot {
-		name = filepath.Base(filepath.Dir(path)) + ".jsonl"
-	}
 	reset := from <= 0 || from > size || had != name
 	if reset {
 		from = max(0, size-chatTail)
@@ -130,6 +119,9 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		}
 	}
 	out := map[string]any{"path": name, "next": from + int64(end), "reset": reset, "items": items}
+	if reset {
+		out["start"] = from // where the phone's items begin: chat.older reads before it
+	}
 	if copilot {
 		return out, nil
 	}
@@ -155,6 +147,70 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 	}
 	out["used"] = tokenLedger.chatTokens(path)
 	return out, nil
+}
+
+// chatSource is the terminal's transcript, the name the phone knows it by, and
+// how to read its lines.
+func chatSource(t *Term) (path, name string, parse func([]byte) []ChatItem) {
+	if t.Kind == "copilot" {
+		path = copilotTranscript(t.cmd.Process.Pid)
+		// Every Copilot conversation is events.jsonl: its folder's name.
+		return path, filepath.Base(filepath.Dir(path)) + ".jsonl", copilotItems
+	}
+	path = claudeTranscript(t.cmd.Process.Pid)
+	// The file's name tells the phone when Claude moved to another conversation.
+	return path, filepath.Base(path), chatItems
+}
+
+// chatOlder returns the chat items just before byte offset before (where the
+// phone's earliest item begins), for scrolling back to the conversation's
+// start, and where they begin (0: the start). had is the transcript the phone
+// shows; another one returns nothing.
+func chatOlder(t *Term, before int64, had string) (map[string]any, error) {
+	path, name, parse := chatSource(t)
+	if path == "" || name != had {
+		return map[string]any{"path": name, "start": before, "items": []ChatItem{}}, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	items, start, err := olderItems(f, min(before, st.Size()), parse)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"path": name, "start": start, "items": items}, nil
+}
+
+// olderItems parses the whole lines in the page before offset before. A line
+// longer than a page gives nothing (its pieces don't parse) but the next call
+// goes on before it.
+func olderItems(f io.ReaderAt, before int64, parse func([]byte) []ChatItem) ([]ChatItem, int64, error) {
+	items := []ChatItem{}
+	if before <= 0 {
+		return items, 0, nil
+	}
+	from := max(0, before-chatPage)
+	buf := make([]byte, before-from)
+	if _, err := f.ReadAt(buf, from); err != nil && err != io.EOF {
+		return nil, 0, err
+	}
+	if from > 0 { // started mid-line: from the next one (buf ends with a line's newline)
+		i := bytes.IndexByte(buf[:len(buf)-1], '\n')
+		if i < 0 {
+			return items, from, nil
+		}
+		buf, from = buf[i+1:], from+int64(i+1)
+	}
+	for _, l := range bytes.Split(buf, []byte{'\n'}) {
+		items = append(items, parse(l)...)
+	}
+	return items, from, nil
 }
 
 type chatContext struct {

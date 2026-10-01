@@ -509,6 +509,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 	var p struct {
 		ID      uint32 `json:"id"`
 		From    int64  `json:"from"`
+		Before  int64  `json:"before"`
 		Cols    uint16 `json:"cols"`
 		Rows    uint16 `json:"rows"`
 		Dir     string `json:"dir"`
@@ -628,6 +629,12 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		return chatRead(t, p.From, p.Path)
+	case "chat.older":
+		t, err := term()
+		if err != nil {
+			return nil, err
+		}
+		return chatOlder(t, p.Before, p.Path)
 	case "chat.sessions":
 		dir, err := resolve(roots, p.Dir)
 		if err != nil {
