@@ -243,6 +243,9 @@ func cmdInstall() {
 	if _, err := loadConfig(); err != nil {
 		die("%v", err)
 	}
+	if brewServiceLoaded() {
+		die("%s; `install` would start a second copy", brewServiceHint())
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		die("%v", err)
@@ -299,9 +302,15 @@ func cmdStatus() {
 		die("%v", err)
 	}
 	fmt.Printf("relay   %s\nphones  %d\nroots   %s\n", c.Relay, len(c.Devices), strings.Join(c.Roots, ", "))
-	if exec.Command("launchctl", "print", domain()+"/"+label).Run() == nil {
+	la, bs := launchctl("print", domain()+"/"+label) == nil, brewServiceLoaded()
+	switch {
+	case la && bs:
+		fmt.Println("agent   TWO copies (LaunchAgent and brew service): they knock each other off the relay.\n        Keep one: `macremote uninstall`, then `brew services restart macremote`")
+	case la:
 		fmt.Println("agent   running (LaunchAgent)")
-	} else {
+	case bs:
+		fmt.Println("agent   running (brew services)")
+	default:
 		fmt.Println("agent   not installed")
 	}
 }
@@ -322,6 +331,7 @@ func waitConfig() (*Config, error) {
 }
 
 func cmdServe() {
+	holdAgentLock()
 	c, err := waitConfig()
 	if err != nil {
 		die("%v", err)
