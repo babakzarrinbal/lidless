@@ -198,6 +198,8 @@ class _WorkspaceListState extends State<WorkspaceList> {
           child: Row(children: [
             StatusDot(_activity(c)),
             const SizedBox(width: 10),
+            Icon(toolIcon(c.tool), size: 14, color: C.dim),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(c.title.isEmpty ? '(untitled)' : c.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
@@ -431,7 +433,7 @@ class _RecentListState extends State<RecentList> {
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5)),
               const SizedBox(height: 2),
               Text(
-                '${baseName(c.dir)}${open ? ' · open on the phone' : c.running ? ' · open on the Mac' : ''}',
+                '${tools[c.tool] ?? c.tool} · ${baseName(c.dir)}${open ? ' · open on the phone' : c.running ? ' · open on the Mac' : ''}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: C.dim),

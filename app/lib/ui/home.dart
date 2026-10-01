@@ -553,12 +553,6 @@ class _HomeState extends State<Home> {
     );
   }
 
-  static IconData toolIcon(String tool) => switch (tool) {
-        'copilot' => Icons.flight_rounded,
-        'cli' => Icons.terminal_rounded,
-        _ => Icons.auto_awesome_rounded,
-      };
-
   Widget _drawer(List<Session> all, Session? cur) {
     return Drawer(
       backgroundColor: C.panel,
