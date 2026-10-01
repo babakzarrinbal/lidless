@@ -155,6 +155,7 @@ class AgentPaneState extends State<AgentPane> {
         TKey(icon: Icons.keyboard_return_rounded, onTap: () => terms.type(t, '\r')),
         for (final s in ['1', '2', '3']) TKey(label: s, onTap: () => terms.type(t, s)),
         TKey(label: '^C', color: C.red, onTap: () => terms.type(t, '\x03')),
+        ...macMods(terms),
         TKey(label: 'tab', onTap: () => terms.key(t, TerminalKey.tab)),
         TKey(icon: Icons.content_paste_rounded, onTap: () => pasteInto(context, terms, t)),
         for (final s in ['/', '@', '!', '#']) TKey(label: s, onTap: () => terms.type(t, s)),

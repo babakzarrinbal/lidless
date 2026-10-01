@@ -312,8 +312,7 @@ class ShellPanelState extends State<ShellPanel> {
         TypingKey(surface: _surface),
         TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
         TKey(label: 'tab', onTap: () => terms.key(t, TerminalKey.tab)),
-        TKey(label: 'ctrl', active: terms.ctrl, onTap: terms.toggleCtrl),
-        TKey(label: 'alt', active: terms.alt, onTap: terms.toggleAlt),
+        ...macMods(terms),
         ...arrowKeys(terms, t),
         TKey(label: '^C', color: C.red, onTap: () => terms.type(t, '\x03')),
         TKey(icon: Icons.content_paste_rounded, onTap: () => pasteInto(context, terms, t)),
@@ -329,6 +328,13 @@ class ShellPanelState extends State<ShellPanel> {
     ]);
   }
 }
+
+/// The Mac's modifier keys, one-shot: ⌃ control, ⌥ option, ⌘ command.
+List<Widget> macMods(Terms terms) => [
+      TKey(label: '⌃', hint: 'control', active: terms.ctrl, onTap: terms.toggleCtrl),
+      TKey(label: '⌥', hint: 'option', active: terms.alt, onTap: terms.toggleAlt),
+      TKey(label: '⌘', hint: 'command', active: terms.cmd, onTap: terms.toggleCmd),
+    ];
 
 /// The key bar's keyboard button for a [TermSurface]; lit while typing.
 class TypingKey extends StatefulWidget {
@@ -486,8 +492,9 @@ class TKey extends StatefulWidget {
     this.active = false,
     this.repeat = false,
     this.color,
+    this.hint,
   });
-  final String? label;
+  final String? label, hint;
   final IconData? icon;
   final VoidCallback onTap;
   final bool active, repeat;
@@ -519,7 +526,7 @@ class _TKeyState extends State<TKey> {
   @override
   Widget build(BuildContext context) {
     final fg = widget.active ? C.bg : (widget.color ?? C.text);
-    return Padding(
+    final key = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: GestureDetector(
         onLongPressStart: widget.repeat ? (_) => _start() : null,
@@ -551,5 +558,6 @@ class _TKeyState extends State<TKey> {
         ),
       ),
     );
+    return widget.hint == null ? key : Tooltip(message: widget.hint!, child: key);
   }
 }

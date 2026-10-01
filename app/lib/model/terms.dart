@@ -97,7 +97,8 @@ class Terms extends ChangeNotifier {
   final Link link;
   final tabs = <TermTab>[];
   final _activeShell = <String, int>{}; // session id -> shell tab index
-  bool ctrl = false, alt = false; // one-shot modifiers from the key bar
+  // One-shot modifiers from the key bar: ⌃ control, ⌥ option (meta), ⌘ command.
+  bool ctrl = false, alt = false, cmd = false;
   bool synced = false; // the Mac's list has been read at least once
   int _epoch = 0;
   bool _syncing = false;
@@ -225,11 +226,27 @@ class Terms extends ChangeNotifier {
   void _input(TermTab t, String s) {
     if (t.exited || t._replaying) return;
     var data = s;
-    if (ctrl || alt) {
+    if (cmd) {
+      _clearMods();
+      final c = data.toLowerCase();
+      if (c == 'v') {
+        Clipboard.getData(Clipboard.kTextPlain).then((d) {
+          final txt = d?.text;
+          if (txt != null && txt.isNotEmpty) paste(t, txt);
+        });
+        return;
+      }
+      // What Terminal.app does with ⌘ shortcuts, as the shell understands them.
+      final m = _cmdKeys[c];
+      if (m == null) {
+        HapticFeedback.heavyImpact();
+        return;
+      }
+      data = m;
+    } else if (ctrl || alt) {
       if (ctrl && data.length == 1) data = String.fromCharCode(ctrlCode(data.codeUnitAt(0)));
       if (alt) data = '\x1b$data';
-      ctrl = alt = false;
-      notifyListeners();
+      _clearMods();
     }
     if (!link.sendInput(t.id, utf8.encode(data))) HapticFeedback.heavyImpact();
   }
@@ -367,13 +384,45 @@ class Terms extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleCmd() {
+    cmd = !cmd;
+    notifyListeners();
+  }
+
+  void _clearMods() {
+    if (!(ctrl || alt || cmd)) return;
+    ctrl = alt = cmd = false;
+    notifyListeners();
+  }
+
+  static const _cmdKeys = {
+    'k': '\x0c', // clear the screen
+    '.': '\x03', // interrupt
+    'a': '\x01', // start of line
+    'e': '\x05',
+    'z': '\x1f', // readline undo
+  };
+
+  // Mac line editing: ⌘ jumps to the line's ends, ⌥ moves by word.
+  static const _cmdArrows = {
+    TerminalKey.arrowLeft: '\x01',
+    TerminalKey.arrowRight: '\x05',
+    TerminalKey.backspace: '\x15',
+    TerminalKey.delete: '\x0b',
+  };
+  static const _optArrows = {
+    TerminalKey.arrowLeft: '\x1bb',
+    TerminalKey.arrowRight: '\x1bf',
+    TerminalKey.backspace: '\x1b\x7f',
+    TerminalKey.delete: '\x1bd',
+  };
+
   void key(TermTab? t, TerminalKey k, {bool shift = false}) {
     if (t == null) return;
-    final c = ctrl, a = alt;
-    if (c || a) {
-      ctrl = alt = false;
-      notifyListeners();
-    }
+    final c = ctrl, a = alt, m = cmd;
+    _clearMods();
+    final seq = m ? _cmdArrows[k] : (a && !c ? _optArrows[k] : null);
+    if (seq != null) return type(t, seq);
     t.terminal.keyInput(k, ctrl: c, alt: a, shift: shift);
   }
 
