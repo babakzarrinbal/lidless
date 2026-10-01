@@ -30,10 +30,13 @@ class Macremote < Formula
 
   def caveats
     <<~EOS
-      Run it now and at every login:
-        brew services start macremote
-      Then pair your phone: run `macremote pair` and scan the code
-      with the Mac Remote app.
+      Point it at your relay; this starts it (now and at every login)
+      and shows a code to scan with the Mac Remote app:
+        macremote setup your.server:8460
+
+      It shows the relay's certificate pin to compare with
+      `docker exec macremote-relay /relay pin` on the server
+      (or pass it: -pin <sha256>). More phones later: macremote pair.
 
       Installed it before with install.sh? Run `macremote uninstall` first,
       so only one copy runs (your paired phones are kept).

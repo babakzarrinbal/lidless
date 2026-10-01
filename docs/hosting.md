@@ -15,36 +15,38 @@ The app has no relay built in. The pairing code that `macremote pair` shows
 carries the relay's address and its certificate pin. So the same app build
 works against any relay: pairing tells it where to go.
 
-## The official setup
+## Setting it up
 
-This is how the author runs it.
+1. **A relay.** Run it on any server that has Docker (below), and note its
+   certificate pin.
+2. **The Mac.** Install the agent and point it at that relay:
 
-- The relay runs in Docker on a small server, on its own port (8460). It uses
-  `deploy/compose.yml` and `deploy/Dockerfile.relay`, deployed with
-  `./dev.sh relay-deploy`.
-- The Homebrew build of the agent has that relay and its pin compiled in, so
-  there is nothing to configure.
+   ```sh
+   brew install babakzarrinbal/macremote/macremote
+   macremote setup your.server:8460
+   ```
 
-On the Mac:
+   `setup` shows the relay's certificate pin. Check that it matches
+   `docker exec macremote-relay /relay pin` on the server, or pass the pin with
+   `-pin <sha256>` to skip the question. It then starts the agent as a brew
+   service (now and at every login) and shows a pairing QR code.
+3. **The phone.** In the app, tap **Pair** (or **Pair another Mac** in the
+   drawer) and scan the code. Each pairing code is valid for 10 minutes and
+   works once. To pair more phones later, run `macremote pair`.
 
-```sh
-brew install babakzarrinbal/macremote/macremote
-brew services start macremote
-macremote pair        # shows a QR code
-```
+The brew package is generic: no relay is built in. Every Mac names its own
+relay with `setup`. The tap is
+https://github.com/babakzarrinbal/homebrew-macremote.
 
-In the app, tap **Pair** (or **Pair another Mac** in the drawer) and scan the code. Each pairing code is
-valid for 10 minutes and works once.
+To point a Mac that is already set up at another relay, run `setup` again. Its
+keys stay the same, but phones paired before the change still have the old
+relay in their pairing, so pair them again.
 
-The tap is https://github.com/babakzarrinbal/homebrew-macremote.
-
-## Your own relay
+## Running a relay
 
 You need a server that can run Docker and has one TCP port open (8460 here).
-The relay has no domain name or CA certificate. On first start it makes a
-self-signed certificate, and the app and the agent both pin its sha256.
-
-### 1. Build and start the relay
+The relay needs no domain name and no CA certificate. On first start it makes
+a self-signed certificate, and the app and the agent both pin its sha256.
 
 You can build without Go installed; the commands below run Go in Docker:
 
@@ -55,41 +57,28 @@ cd deploy && docker compose up -d --build
 docker exec macremote-relay /relay pin   # the certificate pin: 64 hex characters
 ```
 
-For an arm64 server, set `GOARCH=arm64`. To use another port, change both
-sides of `ports:` in `compose.yml` and the `-addr` in `Dockerfile.relay`.
+The relay's log at startup also shows the `macremote setup` line to run on a
+Mac.
+
+- **arm64 server:** set `GOARCH=arm64`.
+- **Another port:** change both sides of `ports:` in `compose.yml`, and the
+  `-addr` in `Dockerfile.relay`.
 
 The certificate is stored in the `data` volume, so the pin stays the same
-across restarts and upgrades. If you delete the volume, you get a new pin and
-every Mac must be pointed at the relay again (step 2).
+across restarts and upgrades. If you delete the volume, the pin changes, and
+every Mac needs `macremote setup` again.
 
-### 2. Point the Mac at it
+The author's relay runs this way on port 8460 and is deployed with
+`./dev.sh relay-deploy`.
 
-You can install the agent with brew, as above, or build it from this repo with
-`./dev.sh agent-install`. Then:
+## Building it yourself
 
-```sh
-macremote init -relay your.server:8460 -pin <pin>
-brew services restart macremote     # or: macremote install
-macremote pair
-```
-
-Running `init` on an agent that is already set up only changes the relay. Its
-keys stay the same, but phones paired before the change still have the old
-relay in their pairing. Pair them again.
-
-To ship your own agent build with your relay compiled in, as the brew build
-does, use:
-
-```sh
-go build -ldflags "-X main.defaultRelay=your.server:8460 -X main.defaultPin=<pin>" ./cmd/macremote
-```
-
-`./dev.sh brew` does this, along with the release tarballs and formula.
-
-### 3. The app
-
-Use the published app, or build it yourself with `./dev.sh apk`. Either one
-works with your relay once it scans your Mac's pairing code.
+- **Agent:** `./dev.sh agent-install` builds it, installs it as a LaunchAgent
+  instead of a brew service, and links `~/.local/bin/macremote`. A Mac that
+  isn't set up yet gets the author's relay; to use another one, run
+  `macremote setup host:port`.
+- **App:** use the published app, or build it with `./dev.sh apk`. Any build
+  works with any relay once it scans a pairing code.
 
 ## What the relay can and can't see
 

@@ -45,11 +45,13 @@ func configDir() string {
 func configPath() string  { return filepath.Join(configDir(), "agent.json") }
 func pairingPath() string { return filepath.Join(configDir(), "pairing.json") }
 
+var errNotSetUp = errors.New("not set up: run `macremote setup host:port` (your relay)")
+
 func loadConfig() (*Config, error) {
 	b, err := os.ReadFile(configPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.New("not set up: run `macremote init -relay host:port -pin <sha256>`")
+			return nil, errNotSetUp
 		}
 		return nil, err
 	}

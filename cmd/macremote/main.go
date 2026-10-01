@@ -2,7 +2,8 @@
 // connection to the relay and serves terminals and files to paired phones
 // over an end-to-end encrypted Noise IK channel.
 //
-//	macremote init -relay host:port -pin <sha256>   create keys and config
+//	macremote setup host:port [-pin <sha256>]       set up, start, pair: all a new Mac needs
+//	macremote init -relay host:port -pin <sha256>   create keys and config only
 //	macremote pair [-code] [-png file]              pair a phone (QR, 10 min)
 //	macremote devices                               list paired phones
 //	macremote revoke <n|name>                       remove a phone
@@ -14,7 +15,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -30,10 +30,6 @@ import (
 
 const label = "org.zarrinbal.macremote"
 
-// The relay a packaged build talks to unless `init` says otherwise; set with
-// -ldflags "-X main.defaultRelay=host:port -X main.defaultPin=<sha256>".
-var defaultRelay, defaultPin string
-
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "macremote: "+format+"\n", a...)
 	os.Exit(1)
@@ -41,11 +37,13 @@ func die(format string, a ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: macremote init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage")
+		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
 	switch os.Args[1] {
+	case "setup":
+		cmdSetup(args)
 	case "init":
 		cmdInit(args)
 	case "pair":
@@ -77,9 +75,6 @@ func cmdInit(args []string) {
 	pin := fs.String("pin", "", "sha256 of the relay certificate")
 	force := fs.Bool("force", false, "replace an existing config (unpairs every phone)")
 	fs.Parse(args)
-	if *relay == "" && *pin == "" {
-		*relay, *pin = defaultRelay, defaultPin
-	}
 	if *relay == "" || len(*pin) != 64 {
 		die("init needs -relay host:port and a 64-hex -pin")
 	}
@@ -118,7 +113,7 @@ func cmdPair(args []string) {
 	codeOnly := fs.Bool("code", false, "print only the pairing code and exit")
 	png := fs.String("png", "", "also write the QR code to this PNG file")
 	fs.Parse(args)
-	c, err := loadOrDefault()
+	c, err := loadConfig()
 	if err != nil {
 		die("%v", err)
 	}
@@ -310,20 +305,23 @@ func cmdStatus() {
 	}
 }
 
-// loadOrDefault reads the config; a packaged build (brew) sets one up on its
-// default relay the first time.
-func loadOrDefault() (*Config, error) {
+// waitConfig reads the config. A service started before `macremote setup`
+// (brew services start) waits for it instead of exiting and being restarted
+// over and over.
+func waitConfig() (*Config, error) {
 	c, err := loadConfig()
-	if errors.Is(err, os.ErrNotExist) && defaultRelay != "" && len(defaultPin) == 64 {
-		if c, err = newConfig(defaultRelay, defaultPin); err == nil {
-			err = c.save()
-		}
+	if err == errNotSetUp {
+		logf("%v; waiting for it", err)
+	}
+	for err == errNotSetUp {
+		time.Sleep(5 * time.Second)
+		c, err = loadConfig()
 	}
 	return c, err
 }
 
 func cmdServe() {
-	c, err := loadOrDefault()
+	c, err := waitConfig()
 	if err != nil {
 		die("%v", err)
 	}

@@ -439,5 +439,7 @@ func main() {
 		ErrorLog:          log.New(os.Stderr, "http: ", 0),
 	}
 	log.Printf("relay on %s pin=%s", *addr, pin(cert))
+	_, port, _ := net.SplitHostPort(*addr)
+	log.Printf("on a Mac: macremote setup <this server>:%s -pin %s", port, pin(cert))
 	log.Fatal(srv.ListenAndServeTLS("", ""))
 }

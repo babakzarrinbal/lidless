@@ -6,7 +6,7 @@
 #   ./dev.sh agent                 build bin/macremote (darwin/arm64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
 #   ./dev.sh mac-kit               build/MacRemote.zip: agent + install.sh for another Mac
-#   ./dev.sh brew [version]        build/brew/: release tarballs + Homebrew formula (BREW_URL=… where they'll be hosted)
+#   ./dev.sh brew [version]        build/brew/: release tarballs + Homebrew formula, generic: `macremote setup <relay>` after install
 #   ./dev.sh brew-test             install that formula from a local tap, check it, remove it
 #   ./dev.sh brew-publish [version] build, then a GitHub release + the formula in the tap ($BREW_OWNER/homebrew-macremote, via gh)
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
@@ -91,11 +91,10 @@ EOF
 }
 
 cmd_brew() {
-  local v=${1:-$(date +%Y.%m.%d)} out=build/brew pin
+  local v=${1:-$(date +%Y.%m.%d)} out=build/brew
   local url=${BREW_URL:-https://github.com/$BREW_TAP/releases/download/v$v}
-  pin=$(cmd_relay-pin)
   rm -rf "$out" && mkdir -p "$out"
-  local flags="-s -X main.defaultRelay=your.server:$RELAY_PORT -X main.defaultPin=$pin"
+  local flags="-s" # no relay built in: `macremote setup host:port` names it
   local arch sha_arm sha_intel
   for arch in arm64 amd64; do
     mkdir -p "$out/$arch"
