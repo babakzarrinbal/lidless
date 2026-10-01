@@ -52,6 +52,7 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
+    terms.onWake = _wake;
     SharedPreferences.getInstance().then((p) {
       if (!mounted) return;
       setState(() {
@@ -63,7 +64,19 @@ class _HomeState extends State<Home> {
   }
 
   @override
+  void didUpdateWidget(Home old) {
+    super.didUpdateWidget(old);
+    terms.onWake = _wake;
+  }
+
+  void _wake(TermTab t) {
+    final s = terms.session(t.session);
+    if (s != null) _enter(s);
+  }
+
+  @override
   void dispose() {
+    if (terms.onWake == _wake) terms.onWake = null;
     for (final f in _files.values) {
       f.dispose();
     }
@@ -71,6 +84,10 @@ class _HomeState extends State<Home> {
   }
 
   void _select(String id) {
+    final was = _recent ? null : _currentOf(terms.sessions);
+    if (was != null && was.id != id) _leave(was);
+    final to = terms.session(id);
+    if (to != null) _enter(to);
     setState(() {
       _current = id;
       _recent = false;
@@ -196,13 +213,72 @@ class _HomeState extends State<Home> {
       ),
     );
     if (ok != true) return;
-    await terms.closeSession(s.id);
+    for (final c in await terms.closeSession(s.id)) {
+      _seen.readNow(c); // seen here: gray in the lists, not unread
+    }
     _prefs?.remove('sessFlags.${s.id}');
   }
 
   void _showRecent() {
     _scaffold.currentState?.closeDrawer();
+    final was = _recent ? null : _currentOf(terms.sessions);
+    if (was != null) _leave(was);
     setState(() => _recent = true);
+  }
+
+  SeenConversations get _seen => SeenConversations(_prefs, _mac);
+
+  /// Leaving a session: an idle Claude quits, so the conversation is free for
+  /// the laptop or another phone. Its last answer was seen here.
+  Future<void> _leave(Session s) async {
+    try {
+      final conv = await terms.park(s);
+      if (conv != null) _seen.readNow(conv);
+    } on RpcError catch (e) {
+      if (mounted) toast(context, e.message, error: true);
+    }
+  }
+
+  /// Coming back: a parked Claude starts again, unless the conversation was
+  /// picked up elsewhere meanwhile; then it's the user's call.
+  Future<void> _enter(Session s) async {
+    if (s.agent?.parked != true || !_waking.add(s.id)) return;
+    try {
+      await _unpark(s);
+    } finally {
+      _waking.remove(s.id);
+    }
+  }
+
+  final _waking = <String>{};
+
+  Future<void> _unpark(Session s) async {
+    try {
+      await terms.unpark(s);
+    } on RpcError catch (e) {
+      if (e.code != 'busy' || !mounted) {
+        if (mounted) toast(context, e.message, error: true);
+        return;
+      }
+      final take = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Open on the Mac'),
+          content: const Text('This conversation was picked up on the Mac (a terminal or an editor) while you were away.\n\n'
+              'Move here quits that Claude (it saves first) and carries on here.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Leave it there')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Move here')),
+          ],
+        ),
+      );
+      if (take != true) return;
+      try {
+        await terms.unpark(s, take: true);
+      } on RpcError catch (e) {
+        if (mounted) toast(context, e.message, error: true);
+      }
+    }
   }
 
   Future<void> _back() async {

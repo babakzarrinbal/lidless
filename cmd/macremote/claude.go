@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -85,16 +84,10 @@ func stopClaude(sid string) error {
 	if !strings.Contains(strings.ToLower(string(out)), "claude") {
 		return errors.New("the process on that conversation is not Claude; quit it on the Mac")
 	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-		return fmt.Errorf("couldn't quit Claude on the Mac: %v", err)
+	if !quitClaude(pid, 5*time.Second) {
+		return errors.New("Claude on the Mac is still running; quit it there")
 	}
-	for i := 0; i < 50; i++ { // it saves the conversation first
-		time.Sleep(100 * time.Millisecond)
-		if syscall.Kill(pid, 0) == syscall.ESRCH {
-			return nil
-		}
-	}
-	return errors.New("Claude on the Mac is still running; quit it there")
+	return nil
 }
 
 // parents maps every process to its parent.

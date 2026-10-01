@@ -226,6 +226,18 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  test('a conversation closed on the phone stays read through Claude\'s last write, and lists share that', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    Conversation conv(int ago) => Conversation.from({'id': 'a', 'title': 't', 'mtime': now - ago});
+    final seen = SeenConversations(prefs, 'm')..listed([conv(60)], {});
+    expect(seen.unread(conv(0)), isTrue);
+    seen.readNow('a');
+    expect(SeenConversations(prefs, 'm').unread(conv(-5)), isFalse); // Claude wrote as it quit
+    expect(SeenConversations(prefs, 'm'), same(seen));
+  });
+
   testWidgets('folders list the open sessions, today\'s conversations, and fold older ones', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

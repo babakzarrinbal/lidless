@@ -28,6 +28,7 @@ class TermTab {
   final chat = ChatLog(); // the agent's transcript, read on demand
   int next = 0; // next output byte offset we expect
   bool exited = false;
+  bool parked = false; // its Claude quit while idle; [Terms.unpark] brings it back
   int unseen = 0; // output bytes since the session was last on screen
   int replayUntil = 0; // output below this offset was already answered once
   bool _replaying = false;
@@ -181,6 +182,7 @@ class Terms extends ChangeNotifier {
       for (final t in tabs) {
         final end = alive[t.id]?['end'];
         if (end is num) t.replayUntil = end.toInt();
+        t.parked = alive[t.id]?['parked'] == true;
       }
       for (final t in tabs) {
         if (!t.exited) _attach(t);
@@ -242,8 +244,12 @@ class Terms extends ChangeNotifier {
     t._replaying = false;
   }
 
+  /// A key pressed in a parked terminal: Home starts its Claude again.
+  void Function(TermTab t)? onWake;
+
   void _input(TermTab t, String s) {
     if (t.exited || t._replaying) return;
+    if (t.parked) return onWake?.call(t);
     var data = s;
     if (cmd) {
       _clearMods();
@@ -339,18 +345,25 @@ class Terms extends ChangeNotifier {
     return flags.trim().isEmpty ? tool : '$tool ${flags.trim()}';
   }
 
-  /// Ends every terminal of a session.
-  Future<void> closeSession(String id) async {
+  /// Ends every terminal of a session; the conversations Claude had open.
+  Future<List<String>> closeSession(String id) async {
+    final open = <String>[];
     for (final t in tabs.where((t) => t.session == id).toList()) {
-      await close(t);
+      final c = await close(t);
+      if (c != null) open.add(c);
     }
     _activeShell.remove(id);
+    return open;
   }
 
-  Future<void> close(TermTab t) async {
+  /// Ends a terminal (its Claude quits first and saves); the conversation
+  /// that Claude had open, if any.
+  Future<String?> close(TermTab t) async {
+    String? conv;
     if (!t.exited) {
       try {
-        await link.call('term.close', {'id': t.id});
+        final r = await link.call('term.close', {'id': t.id});
+        if (r is Map && (r['conversation'] as String? ?? '').isNotEmpty) conv = r['conversation'] as String;
       } catch (_) {}
     }
     link.termOut.remove(t.id);
@@ -359,6 +372,34 @@ class Terms extends ChangeNotifier {
     tabs.remove(t);
     final a = _activeShell[t.session];
     if (i >= 0 && a != null && a >= i && a > 0) _activeShell[t.session] = a - 1;
+    notifyListeners();
+    return conv;
+  }
+
+  /// Quits the session's Claude while it is idle, so the conversation is free
+  /// for the laptop or another phone; the conversation, or null.
+  Future<String?> park(Session s) async {
+    final a = s.agent;
+    if (a == null || a.exited || a.parked || a.kind != 'claude') return null;
+    final live = LiveScreen.of(a.terminal);
+    if (live.status != null || live.asking) return null; // working, or asking
+    final r = await link.call('term.park', {'id': a.id}, const Duration(seconds: 10));
+    final conv = r is Map ? r['conversation'] as String? ?? '' : '';
+    if (conv.isEmpty) return null;
+    a.parked = true;
+    a.note('[Claude quit while you were away, so the laptop or another phone can pick this conversation up. '
+        'It starts again when you come back or press a key.]');
+    notifyListeners();
+    return conv;
+  }
+
+  /// Starts a parked Claude again. [take] quits a Claude that opened the
+  /// conversation elsewhere meanwhile; without it that is an RpcError 'busy'.
+  Future<void> unpark(Session s, {bool take = false}) async {
+    final a = s.agent;
+    if (a == null || a.exited || !a.parked) return;
+    await link.call('term.unpark', {'id': a.id, 'take': take}, const Duration(seconds: 15));
+    a.parked = false;
     notifyListeners();
   }
 
@@ -390,6 +431,7 @@ class Terms extends ChangeNotifier {
   /// Sends text raw, e.g. a command composed in the editor sheet.
   void type(TermTab? t, String text) {
     if (t == null || t.exited) return;
+    if (t.parked) return onWake?.call(t);
     if (!link.sendInput(t.id, utf8.encode(text))) HapticFeedback.heavyImpact();
   }
 

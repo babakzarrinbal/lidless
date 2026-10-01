@@ -26,15 +26,18 @@ type Term struct {
 	Session string
 	Dir     string
 
-	mu      sync.Mutex
-	title   string
-	buf     []byte // the last ≤2*ringKeep bytes of output, ending at end
-	end     int64  // total bytes ever written
-	changed chan struct{}
-	exited  bool
-	code    int
-	cols    uint16
-	rows    uint16
+	mu       sync.Mutex
+	title    string
+	buf      []byte // the last ≤2*ringKeep bytes of output, ending at end
+	end      int64  // total bytes ever written
+	changed  chan struct{}
+	exited   bool
+	code     int
+	cols     uint16
+	rows     uint16
+	run      string // the command typed in first
+	parked   string // the command that brings a parked Claude back
+	parkedID string // its conversation
 
 	in  chan []byte
 	pty *os.File
@@ -50,12 +53,13 @@ type TermInfo struct {
 	Kind    string `json:"kind,omitempty"`
 	Session string `json:"session,omitempty"`
 	Dir     string `json:"dir"`
+	Parked  bool   `json:"parked,omitempty"` // its Claude quit while idle; term.unpark brings it back
 }
 
 func (t *Term) info() TermInfo {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return TermInfo{t.ID, t.title, t.cols, t.rows, t.end, t.Kind, t.Session, t.Dir}
+	return TermInfo{t.ID, t.title, t.cols, t.rows, t.end, t.Kind, t.Session, t.Dir, t.parked != ""}
 }
 
 func (t *Term) append(p []byte) {
@@ -208,6 +212,7 @@ func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (
 	id := m.next
 	t := &Term{ID: id, Created: time.Now(), Kind: kind, Session: session, Dir: dir, changed: make(chan struct{}), cols: cols, rows: rows, pty: f, cmd: cmd, in: make(chan []byte, 1024)}
 	t.title = shell[strings.LastIndex(shell, "/")+1:]
+	t.run = run
 	if run != "" {
 		t.title = strings.Fields(run)[0]
 		t.in <- []byte(run + "\r")

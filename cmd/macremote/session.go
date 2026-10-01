@@ -518,6 +518,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Account string `json:"account"`
 		Session string `json:"session"`
 		Cmd     string `json:"cmd"`
+		Take    bool   `json:"take"` // term.unpark: quit the Claude that has the conversation elsewhere
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -587,8 +588,34 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		logf("%s closed terminal %d", s.device, t.ID)
-		t.hangup()
-		return true, nil
+		sid, pid := claudeIn(t)
+		go func() {
+			// Claude first, so it saves the conversation for whoever picks it up.
+			if pid != 0 {
+				quitClaude(pid, 3*time.Second)
+			}
+			t.hangup()
+		}()
+		return map[string]any{"conversation": sid}, nil
+	case "term.park":
+		t, err := term()
+		if err != nil {
+			return nil, err
+		}
+		if t.Kind != "claude" {
+			return map[string]any{"conversation": ""}, nil
+		}
+		sid, err := t.park()
+		if sid != "" {
+			logf("%s parked the idle Claude in terminal %d", s.device, t.ID)
+		}
+		return map[string]any{"conversation": sid}, err
+	case "term.unpark":
+		t, err := term()
+		if err != nil {
+			return nil, err
+		}
+		return true, t.unpark(p.Take)
 	case "chat.read":
 		t, err := term()
 		if err != nil {
