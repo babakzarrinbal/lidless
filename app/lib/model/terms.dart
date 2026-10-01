@@ -409,8 +409,9 @@ class Terms extends ChangeNotifier {
     }
     if (!t.agent || old || t.parked) return;
     final now = DateTime.now();
-    // A redraw after a resize (on any device) is the same screen again.
-    if (!t.working && now.isBefore(t._redrawUntil)) {
+    // A redraw after a resize (on any device) is the same screen again,
+    // unless Claude's status line says it started working meanwhile.
+    if (!t.working && now.isBefore(t._redrawUntil) && LiveScreen.of(t.terminal).status == null) {
       if (t.readTo >= prev) t.readTo = t.next;
       return;
     }
@@ -469,9 +470,26 @@ class Terms extends ChangeNotifier {
   /// A key pressed in a parked terminal: Home starts its Claude again.
   void Function(TermTab t)? onWake;
 
+  /// Something was just typed into an agent: it is about to work. Until then
+  /// the app counts as busy, so leaving it right away keeps the link up
+  /// (Android only lets the keep-alive service start while the app shows).
+  bool get expecting => _expectTimer?.isActive ?? false;
+
+  static const _expect = Duration(seconds: 30);
+  Timer? _expectTimer;
+
+  void _typedInto(TermTab t) {
+    t._typed = DateTime.now();
+    if (!t.agent) return;
+    final was = expecting;
+    _expectTimer?.cancel();
+    _expectTimer = Timer(_expect, notifyListeners);
+    if (!was) notifyListeners();
+  }
+
   void _input(TermTab t, String s) {
     if (t.exited || t._replaying) return;
-    t._typed = DateTime.now();
+    _typedInto(t);
     if (t.parked) return onWake?.call(t);
     var data = s;
     if (cmd) {
@@ -688,7 +706,7 @@ class Terms extends ChangeNotifier {
   void type(TermTab? t, String text) {
     if (t == null || t.exited) return;
     if (t.parked) return onWake?.call(t);
-    t._typed = DateTime.now();
+    _typedInto(t);
     if (!link.sendInput(t.id, utf8.encode(text))) HapticFeedback.heavyImpact();
   }
 
@@ -752,6 +770,7 @@ class Terms extends ChangeNotifier {
       t._settle?.cancel();
     }
     _seenTimer?.cancel();
+    _expectTimer?.cancel();
     link.removeListener(_onLink);
     _sub.cancel();
     super.dispose();

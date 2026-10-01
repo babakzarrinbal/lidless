@@ -105,6 +105,34 @@ void main() {
       terms.dispose();
     });
 
+    testWidgets('Claude starting right after a resize (the keyboard closing) is work', (tester) async {
+      off = 0;
+      await boot(tester);
+      final t = terms.tabs.single;
+      link.macEvents.add(('term.size', {'id': 7, 'cols': 40, 'rows': 30, 'at': 0}));
+      await tester.pump();
+      out('\x1b[2J\x1b[H✻ Thinking… (1s · esc to interrupt)\r\n');
+      expect(t.working, isTrue);
+      out('\x1b[2J\x1b[H${'the answer ' * 100}');
+      await tester.pump(const Duration(seconds: 3));
+      expect(told, ['s1']);
+      terms.dispose();
+    });
+
+    testWidgets('typing into Claude counts as busy for a while', (tester) async {
+      off = 0;
+      await boot(tester);
+      var changes = 0;
+      terms.addListener(() => changes++);
+      expect(terms.expecting, isFalse);
+      terms.type(terms.tabs.single, '1');
+      expect([terms.expecting, changes], [true, 1]);
+      await tester.pump(const Duration(seconds: 31));
+      expect(terms.expecting, isFalse);
+      expect(changes, 2);
+      terms.dispose();
+    });
+
     testWidgets('only real work notifies, and a read on another phone clears it', (tester) async {
       off = 0;
       await boot(tester);

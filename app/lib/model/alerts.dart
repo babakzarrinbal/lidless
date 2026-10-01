@@ -29,9 +29,11 @@ class Alerts with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) terms.foreground = false;
   }
 
-  // While an agent works, the app away keeps the link up to tell when it stops.
+  // While an agent works (or was just asked something), the app away keeps
+  // the link up to tell when it stops.
   void _watch() {
-    final n = terms.sessions.where((s) => s.activity == Activity.working).length;
+    var n = terms.sessions.where((s) => s.activity == Activity.working).length;
+    if (n == 0 && terms.expecting) n = 1;
     final text = n == 0 ? null : '${n == 1 ? 'An agent is' : '$n agents are'} working on ${link.host}';
     if (text == _watching) return;
     _watching = text;

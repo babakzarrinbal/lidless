@@ -159,6 +159,12 @@ offset. The traps, and what handles each one:
   without a notification, and stays read if it was read before. Output that
   arrived while the phone was away comes in one burst, too fast to sample, so
   it counts as work.
+- **Leaving right after asking.** Android lets the keep-alive service
+  (`WatchService`, "An agent is working") start only while the app shows, in
+  `MainActivity.onPause`. Without it the app loses its network seconds later
+  and never hears the answer. So a Claude/Copilot tab typed into within the
+  last 30 s counts as busy (`Terms.expecting`), even before its output starts.
+  The redraw window also gives way as soon as the status line shows.
 - Not handled yet: reading on the laptop does not mark the phones read.
 
 ## Working on it
