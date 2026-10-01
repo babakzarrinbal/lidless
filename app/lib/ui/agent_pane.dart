@@ -287,10 +287,30 @@ class AgentPaneState extends State<AgentPane> {
             },
           ),
         const SizedBox(width: 6),
-        IconButton.filled(
-          tooltip: _input.text.isEmpty ? 'Enter' : 'Send',
-          onPressed: ended ? null : _send,
-          icon: Icon(_input.text.isEmpty ? Icons.keyboard_return_rounded : Icons.arrow_upward_rounded, size: 20),
+        // While the agent works, an empty box's button stops it (esc); a typed
+        // message still sends (the agent queues it).
+        ListenableBuilder(
+          listenable: terms,
+          builder: (context, _) {
+            final t = tab;
+            if (!ended && !_cli && t != null && t.working && _input.text.isEmpty) {
+              return IconButton.filled(
+                key: const ValueKey('stop'),
+                tooltip: 'Stop',
+                style: IconButton.styleFrom(backgroundColor: C.red, foregroundColor: Colors.white),
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  terms.key(t, TerminalKey.escape);
+                },
+                icon: const Icon(Icons.stop_rounded, size: 20),
+              );
+            }
+            return IconButton.filled(
+              tooltip: _input.text.isEmpty ? 'Enter' : 'Send',
+              onPressed: ended ? null : _send,
+              icon: Icon(_input.text.isEmpty ? Icons.keyboard_return_rounded : Icons.arrow_upward_rounded, size: 20),
+            );
+          },
         ),
       ]),
     );
