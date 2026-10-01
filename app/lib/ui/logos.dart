@@ -1,6 +1,6 @@
 // The agents' own logos. Claude and GitHub Copilot from Simple Icons (CC0),
-// VS Code from vscode-icons (MIT). A VS Code chat shows the logo of the model
-// it ran on, with VS Code's in its corner.
+// VS Code from vscode-icons (MIT). A VS Code chat is Copilot's, with VS Code's
+// logo in its corner (whichever model it ran on).
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -18,12 +18,11 @@ const _vscode =
     '<svg viewBox="2 2 28 28" xmlns="http://www.w3.org/2000/svg"><path d="M29.01,5.03,23.244,2.254a1.742,1.742,0,0,0-1.989.338L2.38,19.8A1.166,1.166,0,0,0,2.3,21.447c.025.027.05.053.077.077l1.541,1.4a1.165,1.165,0,0,0,1.489.066L28.142,5.75A1.158,1.158,0,0,1,30,6.672V6.605A1.748,1.748,0,0,0,29.01,5.03Z" fill="#0065a9"/><path d="M29.01,26.97l-5.766,2.777a1.745,1.745,0,0,1-1.989-.338L2.38,12.2A1.166,1.166,0,0,1,2.3,10.553c.025-.027.05-.053.077-.077l1.541-1.4A1.165,1.165,0,0,1,5.41,9.01L28.142,26.25A1.158,1.158,0,0,0,30,25.328V25.4A1.749,1.749,0,0,1,29.01,26.97Z" fill="#007acc"/><path d="M23.244,29.747a1.745,1.745,0,0,1-1.989-.338A1.025,1.025,0,0,0,23,28.684V3.316a1.024,1.024,0,0,0-1.749-.724,1.744,1.744,0,0,1,1.989-.339l5.765,2.772A1.748,1.748,0,0,1,30,6.6V25.4a1.748,1.748,0,0,1-.991,1.576Z" fill="#1f9cf0"/></svg>';
 
 /// The logo of a tool (claude, copilot, cli, vscode). A VS Code chat shows
-/// its [model]'s maker (a Claude model: Claude's; any other: Copilot's)
-/// with VS Code's logo as a badge.
+/// Copilot's with VS Code's as a badge.
 class ToolLogo extends StatelessWidget {
-  const ToolLogo(this.tool, {super.key, this.model = '', this.size = 18});
+  const ToolLogo(this.tool, {super.key, this.size = 18});
 
-  final String tool, model;
+  final String tool;
   final double size;
 
   static Widget _svg(String s, double size, Color? color) => SvgPicture.string(s,
@@ -42,7 +41,7 @@ class ToolLogo extends StatelessWidget {
     return SizedBox.square(
       dimension: size,
       child: Stack(clipBehavior: Clip.none, children: [
-        _of(model.toLowerCase().contains('claude') ? 'claude' : 'copilot', size),
+        _of('copilot', size),
         Positioned(
           right: -b * .35,
           bottom: -b * .3,
