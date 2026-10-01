@@ -35,6 +35,7 @@ type Term struct {
 	rows     uint16
 	parked   string // the command that brings a parked Claude back
 	parkedID string // its conversation
+	seen     int64  // read up to here on some phone; shared by all of them
 
 	conn net.Conn
 	send chan []byte // frames to the holder, in order
@@ -50,13 +51,27 @@ type TermInfo struct {
 	Session string `json:"session,omitempty"`
 	Dir     string `json:"dir"`
 	Parked  bool   `json:"parked,omitempty"` // its Claude quit while idle; term.unpark brings it back
+	Seen    int64  `json:"seen,omitempty"`   // read up to here on some phone
 }
 
 func (t *Term) info() TermInfo {
 	end, _, _ := t.out.state()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return TermInfo{t.ID, t.title, t.cols, t.rows, end, t.Kind, t.Session, t.Dir, t.parked != ""}
+	return TermInfo{t.ID, t.title, t.cols, t.rows, end, t.Kind, t.Session, t.Dir, t.parked != "", t.seen}
+}
+
+// markSeen notes that a phone showed the output up to to; whether that is
+// news for the others.
+func (t *Term) markSeen(to int64) bool {
+	end, _, _ := t.out.state()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if to <= t.seen || to > end {
+		return false
+	}
+	t.seen = to
+	return true
 }
 
 func (t *Term) read(from int64, max int) ([]byte, int64, bool, <-chan struct{}) {
@@ -109,7 +124,8 @@ type Terms struct {
 	terms    map[uint32]*Term
 	adopting map[uint32]bool
 	spawning int
-	onChange func() // a terminal came or went
+	onChange func()                            // a terminal came or went
+	onEvent  func(ev string, p map[string]any) // for every phone: term.size, term.seen
 }
 
 func newTerms() *Terms {
@@ -145,6 +161,12 @@ func (m *Terms) list() []TermInfo {
 func (m *Terms) changed() {
 	if m.onChange != nil {
 		m.onChange()
+	}
+}
+
+func (m *Terms) event(ev string, p map[string]any) {
+	if m.onEvent != nil {
+		m.onEvent(ev, p)
 	}
 }
 
@@ -303,9 +325,14 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 				}
 			case 's':
 				if len(p) >= 4 {
+					cols, rows := binary.BigEndian.Uint16(p), binary.BigEndian.Uint16(p[2:])
 					t.mu.Lock()
-					t.cols, t.rows = binary.BigEndian.Uint16(p), binary.BigEndian.Uint16(p[2:])
+					t.cols, t.rows = cols, rows
 					t.mu.Unlock()
+					// What the program draws next is a redraw for the new
+					// size, not news: phones keep it out of their unread.
+					end, _, _ := t.out.state()
+					m.event("term.size", map[string]any{"id": id, "cols": cols, "rows": rows, "at": end})
 				}
 			case 'x':
 				if len(p) >= 4 {

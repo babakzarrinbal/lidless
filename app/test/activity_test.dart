@@ -27,7 +27,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     terms.viewing = 's1';
     Activity of(String id) => terms.session(id)!.activity;
-    void say(int id, int off) => link.termOut[id]!(off, Uint8List.fromList(utf8.encode('x' * 600)));
+    // Claude's status line while it works, then the answer: 600 bytes.
+    void say(int id, int off) {
+      final b = utf8.encode('\x1b[2J\x1b[H✻ Thinking… (esc to interrupt)\r\n');
+      link.termOut[id]!(off, Uint8List.fromList(b));
+      link.termOut[id]!(off + b.length, Uint8List.fromList(utf8.encode('\x1b[2J\x1b[H${'x' * (592 - b.length)}')));
+    }
 
     say(8, 0);
     expect(of('s2'), Activity.working);

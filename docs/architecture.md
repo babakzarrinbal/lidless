@@ -136,6 +136,31 @@ parked. Parked state lives only in the agent's memory.
 - The app must handle an older agent: an `RpcError` with code `unknown`. Macs
   update separately through brew.
 
+### Unread and notifications
+
+A tab is unread when an agent terminal has more than 512 bytes past its read
+offset. The traps, and what handles each one:
+
+- **Read on one phone, read on all.** A phone that shows output sends
+  `term.seen {id, seen}` (debounced 1 s). The agent keeps the highest offset
+  per terminal, lists it as `seen` in `term.list`, and broadcasts a
+  `term.seen` event. The other phones raise their read offset and drop the
+  notification (`Terms._seenElsewhere`).
+- **A resize is not news.** Any resize makes Claude redraw the whole screen.
+  The agent broadcasts `term.size` when a holder reports a new size. For
+  1.5 s after that (or after its own resize), a phone treats the output as the
+  same screen again, unless the tab is already working.
+- **Hidden tabs don't resize.** A tab that was never on screen has the
+  emulator's 80x24. It attaches with `cols`/`rows` 0, which the agent ignores,
+  so a reconnecting phone does not shrink the terminal for everyone.
+- **Only an answer notifies.** Claude shows a status line ("esc to
+  interrupt", the spinner) while it works. A burst of output in a `claude`
+  tab with no status line on screen (laptop typing, a focus redraw) settles
+  without a notification, and stays read if it was read before. Output that
+  arrived while the phone was away comes in one burst, too fast to sample, so
+  it counts as work.
+- Not handled yet: reading on the laptop does not mark the phones read.
+
 ## Working on it
 
 - **Go:** only in Docker: `./dev.sh go-check`, `./dev.sh go test -run X

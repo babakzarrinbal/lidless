@@ -38,7 +38,11 @@ class TermTab {
   bool _replaying = false;
   bool _fresh = false; // just adopted: its replay is old news
   bool _told = false; // [Terms.onUnread] was called for this stop
-  DateTime _typed = DateTime(0);
+  bool _shown = false; // laid out on screen once: its size is real, not 80x24
+  bool _sawWork = false; // this burst showed the agent's working status
+  bool _readAtStart = false; // all was read when this burst began
+  int _sentSeen = 0; // the read offset last shared with the other devices
+  DateTime _typed = DateTime(0), _redrawUntil = DateTime(0), _sampled = DateTime(0);
   late final ByteConversionSink _dec;
   Timer? _resize, _settle;
 
@@ -187,6 +191,31 @@ class Terms extends ChangeNotifier {
       if (t.session == session) t.readTo = t.next;
     }
     onRead?.call(session);
+    _shareSeen();
+  }
+
+  Timer? _seenTimer;
+
+  /// Tells the Mac what this phone has shown, so it is read on every phone.
+  void _shareSeen() {
+    if (!tabs.any((t) => !t.exited && min(t.readTo, t.next) > t._sentSeen)) return;
+    _seenTimer ??= Timer(const Duration(seconds: 1), () {
+      _seenTimer = null;
+      for (final t in tabs) {
+        final to = min(t.readTo, t.next);
+        if (t.exited || to <= t._sentSeen) continue;
+        t._sentSeen = to;
+        link.call('term.seen', {'id': t.id, 'seen': to}).ignore(); // an older agent: unknown
+      }
+    });
+  }
+
+  /// Another phone showed [t] up to [to].
+  void _seenElsewhere(TermTab t, int to) {
+    if (to <= t.readTo) return;
+    t.readTo = to;
+    if (to > t._sentSeen) t._sentSeen = to;
+    if (t.agent && !t.unread) onRead?.call(t.session); // its notification goes
   }
 
   String get _readKey => 'termRead:${link.pairing.room}';
@@ -242,6 +271,8 @@ class Terms extends ChangeNotifier {
         final end = alive[t.id]?['end'];
         if (end is num) t.replayUntil = end.toInt();
         t.parked = alive[t.id]?['parked'] == true;
+        final seen = alive[t.id]?['seen'];
+        if (seen is num) _seenElsewhere(t, seen.toInt());
       }
       for (final t in tabs) {
         if (!t.exited) _attach(t);
@@ -336,9 +367,11 @@ class Terms extends ChangeNotifier {
     };
     t.terminal.onBell = () => HapticFeedback.lightImpact();
     t.terminal.onResize = (w, h, _, _) {
+      t._shown = true;
       t._resize?.cancel();
       t._resize = Timer(const Duration(milliseconds: 120), () {
         if (!t.exited) {
+          t._redrawUntil = DateTime.now().add(_redraw);
           link.call('term.resize', {'id': t.id, 'cols': w, 'rows': h}).ignore();
         }
       });
@@ -358,32 +391,57 @@ class Terms extends ChangeNotifier {
       if (skip >= d.length) return;
       d = Uint8List.sublistView(d, skip);
     }
+    final prev = t.next;
     t.next += d.length;
     // Replayed output may contain queries (cursor position, device attributes)
     // the shell already got answers to: don't answer them twice.
-    t._replaying = t.next <= t.replayUntil;
+    final catchUp = t.next <= t.replayUntil;
+    t._replaying = catchUp;
     t._dec.add(d);
     t._replaying = false;
     // An adopted terminal's replay is old; after a reconnect, what came
     // meanwhile is news.
     final old = t._fresh && t.next <= t.replayUntil;
     if (!old) t._fresh = false;
-    if (_onScreen(t) || t.parked) t.readTo = t.next;
+    if (_onScreen(t) || t.parked) {
+      t.readTo = t.next;
+      _shareSeen();
+    }
     if (!t.agent || old || t.parked) return;
+    final now = DateTime.now();
+    // A redraw after a resize (on any device) is the same screen again.
+    if (!t.working && now.isBefore(t._redrawUntil)) {
+      if (t.readTo >= prev) t.readTo = t.next;
+      return;
+    }
     // An echo of what was typed is not work.
-    if (!t.working && DateTime.now().difference(t._typed) < const Duration(milliseconds: 400)) return;
-    _busy(t);
+    if (!t.working && now.difference(t._typed) < const Duration(milliseconds: 400)) return;
+    _busy(t, prev);
+    // What came while this phone was away arrives in one burst, too fast to
+    // catch the status line: count it as work.
+    if (catchUp) t._sawWork = true;
   }
+
+  static const _redraw = Duration(milliseconds: 1500);
 
   /// Output keeps an agent working; two quiet seconds with no spinner on its
   /// screen and it has stopped.
-  void _busy(TermTab t) {
+  void _busy(TermTab t, int prev) {
     t._settle?.cancel();
     t._settle = Timer(const Duration(seconds: 2), () => _settled(t));
-    if (t.working) return;
-    t.working = true;
-    t._told = false;
-    notifyListeners();
+    final now = DateTime.now();
+    if (!t.working) {
+      t.working = true;
+      t._told = false;
+      t._sawWork = false;
+      t._readAtStart = t.readTo >= prev;
+      t._sampled = DateTime(0);
+      notifyListeners();
+    }
+    if (!t._sawWork && now.difference(t._sampled) > const Duration(milliseconds: 300)) {
+      t._sampled = now;
+      t._sawWork = LiveScreen.of(t.terminal).status != null;
+    }
   }
 
   void _settled(TermTab t) {
@@ -394,6 +452,13 @@ class Terms extends ChangeNotifier {
       return;
     }
     t.working = false;
+    // Claude shows a status line while it works. Output without one (a
+    // laptop typing, a focus redraw) is not an answer to tell about.
+    if (t.kind == 'claude' && !t._sawWork && !live.asking) {
+      if (t._readAtStart) t.readTo = t.next;
+      notifyListeners();
+      return;
+    }
     notifyListeners();
     if (t.unread && !t._told) {
       t._told = true;
@@ -447,8 +512,10 @@ class Terms extends ChangeNotifier {
       final info = await link.call('term.attach', {
         'id': t.id,
         'from': t.next,
-        'cols': t.terminal.viewWidth,
-        'rows': t.terminal.viewHeight,
+        // A tab never on screen has the emulator's 80x24, which would shrink
+        // the Mac's terminal for everyone (0: keep the size).
+        'cols': t._shown ? t.terminal.viewWidth : 0,
+        'rows': t._shown ? t.terminal.viewHeight : 0,
       }) as Map;
       final end = (info['end'] as num).toInt();
       if (end > t.replayUntil) t.replayUntil = end;
@@ -584,6 +651,19 @@ class Terms extends ChangeNotifier {
       _refresh();
       return;
     }
+    if (e.$1 == 'term.size' || e.$1 == 'term.seen') {
+      final p = e.$2 as Map;
+      final t = tabs.where((t) => t.id == (p['id'] as num).toInt()).firstOrNull;
+      if (t == null) return;
+      if (e.$1 == 'term.size') {
+        t._redrawUntil = DateTime.now().add(_redraw);
+      } else {
+        _seenElsewhere(t, (p['seen'] as num).toInt());
+        _saveRead();
+        notifyListeners();
+      }
+      return;
+    }
     if (e.$1 != 'term.exit') return;
     final p = e.$2 as Map;
     final id = (p['id'] as num).toInt();
@@ -671,6 +751,7 @@ class Terms extends ChangeNotifier {
     for (final t in tabs) {
       t._settle?.cancel();
     }
+    _seenTimer?.cancel();
     link.removeListener(_onLink);
     _sub.cancel();
     super.dispose();

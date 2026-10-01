@@ -21,10 +21,12 @@ certificate pin, keys, or tokens. Those live in untracked files (listed below).
 | `site/` | Landing page (lidless.zarrinbal.org); `site-build` refuses to ship a server address. |
 
 RPC methods (agent `session.go`, about line 540): `term.*` (list, open, attach,
-detach, resize, rename, close; park/unpark only for terminals an old app
+detach, resize, seen, rename, close; park/unpark only for terminals an old app
 parked), `chat.*` (read, older, sessions, recent, commands, stop), `fs.*`,
 `shell.list`/`shell.set`, `sys.status`, `usage`, `tokens.reset`. Events:
-`terms` (a terminal came or went, on any device), `term.exit`. A new method needs both sides. The app must handle an
+`terms` (a terminal came or went, on any device), `term.exit`, `term.size`
+(the pty was resized: the redraw that follows is not news), `term.seen` (a
+phone showed a terminal up to an offset: read on every phone). A new method needs both sides. The app must handle an
 older agent (an `RpcError` with code `unknown`), because Macs update separately
 through brew.
 

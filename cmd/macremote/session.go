@@ -392,7 +392,14 @@ func (s *Session) sendJSON(v any) {
 
 // termsChanged tells every phone a terminal came or went (one a phone or the
 // laptop opened, or one that ended), so each lists it without reconnecting.
-func (a *Agent) termsChanged() {
+func (a *Agent) termsChanged() { a.broadcast(map[string]any{"ev": "terms"}) }
+
+// termEvent tells every phone about one terminal: term.size, term.seen.
+func (a *Agent) termEvent(ev string, p map[string]any) {
+	a.broadcast(map[string]any{"ev": ev, "p": p})
+}
+
+func (a *Agent) broadcast(v map[string]any) {
 	a.mu.Lock()
 	ss := make([]*Session, 0, len(a.sessions))
 	for s := range a.sessions {
@@ -400,7 +407,7 @@ func (a *Agent) termsChanged() {
 	}
 	a.mu.Unlock()
 	for _, s := range ss {
-		go s.sendJSON(map[string]any{"ev": "terms"})
+		go s.sendJSON(v)
 	}
 }
 
@@ -537,6 +544,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Cmd     string `json:"cmd"`
 		Take    bool   `json:"take"` // term.unpark: quit the Claude that has the conversation elsewhere
 		Shell   string `json:"shell"`
+		Seen    int64  `json:"seen"`
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -582,6 +590,15 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		t.resize(p.Cols, p.Rows)
 		s.attach(t, p.From)
 		return t.info(), nil
+	case "term.seen": // a phone showed this output: read on every phone
+		t, err := term()
+		if err != nil {
+			return nil, err
+		}
+		if t.markSeen(p.Seen) {
+			s.a.termEvent("term.seen", map[string]any{"id": t.ID, "seen": p.Seen})
+		}
+		return true, nil
 	case "term.detach":
 		s.detach(p.ID)
 		return true, nil

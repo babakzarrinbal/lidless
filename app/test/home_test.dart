@@ -20,6 +20,7 @@ class FakeLink extends Link {
   }
   final Map<String, dynamic> answers;
   final calls = <String>[];
+  final sent = <(String, Map?)>[];
   final macEvents = StreamController<(String, dynamic)>.broadcast();
 
   @override
@@ -28,6 +29,7 @@ class FakeLink extends Link {
   @override
   Future<dynamic> call(String method, [Map<String, dynamic>? params, Duration timeout = const Duration(seconds: 45)]) async {
     calls.add(method);
+    sent.add((method, params));
     if (answers.containsKey(method)) return answers[method];
     throw RpcError('unknown', 'unknown method $method');
   }
