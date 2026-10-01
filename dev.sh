@@ -57,8 +57,10 @@ cmd_relay-pin() { ssh "$BOX" docker exec macremote-relay /relay pin; }
 
 cmd_agent-install() {
   cmd_agent
-  local pin; pin=$(cmd_relay-pin)
-  bin/macremote init -relay your.server:$RELAY_PORT -pin "$pin"
+  if [ ! -f "$HOME/.config/macremote/agent.json" ]; then # keep pairings on reinstall
+    local pin; pin=$(cmd_relay-pin)
+    bin/macremote init -relay your.server:$RELAY_PORT -pin "$pin"
+  fi
   bin/macremote install
   mkdir -p "$HOME/.local/bin"
   ln -sf "$HOME/Library/Application Support/MacRemote/macremote" "$HOME/.local/bin/macremote"
