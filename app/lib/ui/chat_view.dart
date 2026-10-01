@@ -368,22 +368,72 @@ class _Note extends StatelessWidget {
       );
 }
 
-class _Working extends StatelessWidget {
+/// Claude's working line, the way the terminal shows it: a turning glyph and
+/// its word ("Pondering…") with a light running over it, then time and tokens.
+class _Working extends StatefulWidget {
   const _Working(this.status);
   final String status;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: Row(children: [
-          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.8, color: C.amber)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(status,
-                maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: C.amber)),
-          ),
-        ]),
-      );
+  State<_Working> createState() => _WorkingState();
+}
+
+class _WorkingState extends State<_Working> with SingleTickerProviderStateMixin {
+  static const _glyphs = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'];
+  late final _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))..repeat();
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (word, meta) = workingParts(widget.status);
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: AnimatedBuilder(
+        animation: _spin,
+        builder: (context, _) {
+          final v = _spin.value;
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 18,
+              child: Text(_glyphs[(v * _glyphs.length).floor() % _glyphs.length],
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, height: 1.1, color: C.amber)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: ShaderMask(
+                      blendMode: BlendMode.srcIn,
+                      shaderCallback: (r) => LinearGradient(
+                        colors: [C.amber, Color.lerp(C.amber, Colors.white, 0.75)!, C.amber],
+                        stops: const [0.0, 0.5, 1.0],
+                        begin: Alignment(-3 + v * 6 - 0.6, 0),
+                        end: Alignment(-3 + v * 6 + 0.6, 0),
+                      ).createShader(r),
+                      child: Text(word.isEmpty ? 'Working…' : word,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: C.amber)),
+                    ),
+                  ),
+                  if (meta.isNotEmpty)
+                    TextSpan(text: '  $meta', style: const TextStyle(fontSize: 12, color: C.dim)),
+                ]),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
 }
 
 /// A choice Claude is waiting on (a permission, a plan approval…), with one

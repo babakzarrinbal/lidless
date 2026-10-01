@@ -28,6 +28,7 @@ class ChatLog extends ChangeNotifier {
   int next = 0;
   bool loaded = false;
   bool _busy = false;
+  ContextUse? ctx; // how full Claude's context window is, once it has answered
 
   Future<void> poll(Link link, int term) async {
     if (_busy || !link.online) return;
@@ -64,9 +65,52 @@ class ChatLog extends ChangeNotifier {
       }
       changed = true;
     }
+    if (r['ctx'] case final Map c) {
+      final u = ContextUse((c['tokens'] as num).toInt(), (c['size'] as num).toInt(), c['model'] as String? ?? '');
+      if (u != ctx) changed = true;
+      ctx = u;
+    }
     loaded = true;
     if (changed) notifyListeners();
   }
+}
+
+class ContextUse {
+  const ContextUse(this.tokens, this.size, this.model);
+  final int tokens, size;
+  final String model;
+  double get fraction => size <= 0 ? 0 : (tokens / size).clamp(0, 1).toDouble();
+
+  @override
+  bool operator ==(Object other) =>
+      other is ContextUse && other.tokens == tokens && other.size == size && other.model == model;
+  @override
+  int get hashCode => Object.hash(tokens, size, model);
+}
+
+/// "127k", "1.2M": token counts the way Claude Code prints them.
+String tokenCount(int n) {
+  if (n >= 1000000) return '${(n / 1e6).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
+  if (n >= 1000) return '${(n / 1000).round()}k';
+  return '$n';
+}
+
+/// The working line's parts: "✶ Pondering… (esc to interrupt · 12s · ↓ 1.2k tokens)"
+/// → ("Pondering…", "12s · ↓ 1.2k tokens").
+(String, String) workingParts(String status) {
+  var s = status.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
+  var meta = '';
+  final i = s.indexOf('(');
+  if (i >= 0) {
+    meta = s.substring(i + 1).replaceAll(')', '');
+    s = s.substring(0, i);
+  }
+  meta = meta
+      .split('·')
+      .map((p) => p.trim())
+      .where((p) => p.isNotEmpty && !p.contains('esc to interrupt'))
+      .join(' · ');
+  return (s.trim(), meta);
 }
 
 /// What the agent's screen says right now, beyond the transcript.

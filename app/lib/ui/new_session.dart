@@ -273,6 +273,10 @@ String baseName(String p) {
 String tildePath(String p, String home) =>
     home.length > 1 && p.startsWith(home) ? '~${p.substring(home.length)}' : p;
 
+/// The saved flags resuming one conversation, for opening it in a new session.
+String resumeFlags(String flags, String id) =>
+    continueFlags(flags).replaceFirst('--continue', '--resume $id');
+
 /// The saved flags with --continue in place of any resume choice, for
 /// restarting a session's Claude.
 String continueFlags(String flags) {

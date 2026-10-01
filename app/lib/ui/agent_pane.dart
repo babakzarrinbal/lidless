@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
+import '../model/claude.dart';
 import '../model/terms.dart';
+import '../net/link.dart';
+import 'agent_extras.dart';
 import 'chat_view.dart';
 import 'terminal_panel.dart';
 import 'theme.dart';
@@ -19,12 +22,14 @@ class AgentPane extends StatefulWidget {
     required this.fontSize,
     required this.onFocus,
     required this.onRestart,
+    required this.onConversation,
   });
   final Terms terms;
   final Session session;
   final double fontSize;
   final VoidCallback onFocus;
   final VoidCallback onRestart;
+  final ValueChanged<Conversation> onConversation; // picked from the folder's history
 
   @override
   State<AgentPane> createState() => AgentPaneState();
@@ -41,6 +46,9 @@ class AgentPaneState extends State<AgentPane> {
   bool get _canChat => widget.session.tool == 'claude';
   bool _chatMode = true; // Claude shows as a chat; the terminal is one tap away
   bool get _chat => _canChat && _chatMode && tab != null;
+  bool get _slashy => !_cli && _inputFocus.hasFocus && RegExp(r'^/\S*$').hasMatch(_input.text);
+  List<SlashCommand>? _commands;
+  bool _loadingCommands = false;
 
   @override
   void initState() {
@@ -49,8 +57,56 @@ class AgentPaneState extends State<AgentPane> {
       if (_inputFocus.hasFocus) widget.onFocus();
       setState(() {});
     });
-    _input.addListener(() => setState(() {}));
+    _input.addListener(() {
+      setState(() {});
+      if (_slashy) _loadCommands();
+    });
   }
+
+  Future<void> _loadCommands() async {
+    if (_commands != null || _loadingCommands) return;
+    _loadingCommands = true;
+    try {
+      final c = await SlashCommand.of(terms.link, widget.session.dir, widget.session.tool);
+      if (mounted) setState(() => _commands = c);
+    } on RpcError {
+      // offline or an older agent: no popup
+    } finally {
+      _loadingCommands = false;
+    }
+  }
+
+  void _pickCommand(SlashCommand c) {
+    final text = '/${c.name} ';
+    _input.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+
+  Future<void> _history() async {
+    final c = await pickConversation(context, terms.link, widget.session.dir, currentTerm: tab?.id);
+    if (c != null && mounted) widget.onConversation(c);
+  }
+
+  Widget _pill({required IconData icon, String? label, required VoidCallback onTap, String? tip}) => Material(
+        color: C.raised.withValues(alpha: 0.92),
+        shape: const StadiumBorder(side: BorderSide(color: C.line)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Tooltip(
+            message: tip ?? '',
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: label == null ? 8 : 10, vertical: 6),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 15, color: C.dim),
+                if (label != null) ...[
+                  const SizedBox(width: 5),
+                  Text(label, style: const TextStyle(fontSize: 12, color: C.dim)),
+                ],
+              ]),
+            ),
+          ),
+        ),
+      );
 
   @override
   void dispose() {
@@ -115,22 +171,15 @@ class AgentPaneState extends State<AgentPane> {
             Positioned(
               top: 6,
               right: 6,
-              child: Material(
-                color: C.raised.withValues(alpha: 0.92),
-                shape: const StadiumBorder(side: BorderSide(color: C.line)),
-                child: InkWell(
-                  customBorder: const StadiumBorder(),
+              child: Row(children: [
+                _pill(icon: Icons.history_rounded, tip: 'Conversations in this folder', onTap: _history),
+                const SizedBox(width: 6),
+                _pill(
+                  icon: _chat ? Icons.terminal_rounded : Icons.forum_outlined,
+                  label: _chat ? 'Terminal' : 'Chat',
                   onTap: () => setState(() => _chatMode = !_chatMode),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(_chat ? Icons.terminal_rounded : Icons.forum_outlined, size: 15, color: C.dim),
-                      const SizedBox(width: 5),
-                      Text(_chat ? 'Terminal' : 'Chat', style: const TextStyle(fontSize: 12, color: C.dim)),
-                    ]),
-                  ),
                 ),
-              ),
+              ]),
             ),
           if (ended && terms.synced)
             Positioned(
@@ -145,6 +194,12 @@ class AgentPaneState extends State<AgentPane> {
                 ),
               ),
             ),
+          if (_slashy && _commands != null)
+            Builder(builder: (context) {
+              final m = SlashCommand.match(_commands!, _input.text);
+              if (m.isEmpty) return const SizedBox.shrink();
+              return Positioned(left: 6, right: 6, bottom: 0, child: SlashList(commands: m, onPick: _pickCommand));
+            }),
         ]),
       ),
       KeyBar(keys: [
@@ -200,6 +255,16 @@ class AgentPaneState extends State<AgentPane> {
             ),
           ),
         ),
+        if (_canChat && tab != null)
+          ListenableBuilder(
+            listenable: tab!.chat,
+            builder: (context, _) {
+              final u = tab!.chat.ctx;
+              return u == null
+                  ? const SizedBox.shrink()
+                  : Padding(padding: const EdgeInsets.only(left: 6, bottom: 2), child: ContextRing(u));
+            },
+          ),
         const SizedBox(width: 6),
         IconButton.filled(
           tooltip: _input.text.isEmpty ? 'Enter' : 'Send',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../model/claude.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import 'agent_pane.dart';
@@ -24,6 +25,7 @@ class SessionView extends StatefulWidget {
     required this.fontSize,
     required this.keyboard,
     required this.onRestart,
+    required this.onConversation,
   });
   final Terms terms;
   final Session session;
@@ -31,6 +33,7 @@ class SessionView extends StatefulWidget {
   final double fontSize;
   final bool keyboard;
   final VoidCallback onRestart;
+  final ValueChanged<Conversation> onConversation;
 
   @override
   State<SessionView> createState() => SessionViewState();
@@ -228,6 +231,7 @@ class SessionViewState extends State<SessionView> {
           fontSize: widget.fontSize,
           onFocus: () => _focused(Pane.agent),
           onRestart: widget.onRestart,
+          onConversation: widget.onConversation,
         ),
       )),
       place(sb, showSB, Container(

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../model/claude.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import '../net/store.dart';
+import 'agent_extras.dart';
 import 'files_panel.dart';
 import 'new_session.dart';
 import 'session_view.dart';
@@ -121,6 +123,39 @@ class _HomeState extends State<Home> {
     }
   }
 
+  /// Shows a conversation picked from the folder's history: the session that
+  /// already has it open, or a new session resuming it.
+  Future<void> _openConversation(Session from, Conversation c) async {
+    final here = terms.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
+    if (here != null) {
+      _select(here.id);
+      return;
+    }
+    if (c.running) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Open it here too?'),
+          content: const Text('Claude has this conversation open in a terminal on the Mac. '
+              'A second Claude on it works, but the two will not see each other\'s new messages.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    final flags = resumeFlags(_prefs?.getString('sessFlags.${from.id}') ?? '', c.id);
+    try {
+      final id = await terms.start(from.dir, flags, tool: 'claude');
+      await _prefs?.setString('sessFlags.$id', flags);
+      if (mounted) _select(id);
+    } on RpcError catch (e) {
+      if (mounted) toast(context, e.message, error: true);
+    }
+  }
+
   Future<void> _closeSession(Session s) async {
     final n = s.shells.where((t) => !t.exited).length;
     final ok = await showDialog<bool>(
@@ -209,6 +244,7 @@ class _HomeState extends State<Home> {
             fontSize: _font,
             keyboard: kb && s == cur,
             onRestart: () => _restart(s),
+            onConversation: (c) => _openConversation(s, c),
           ),
       ],
     );
@@ -535,8 +571,14 @@ class _HomeState extends State<Home> {
 
   Future<void> _statusSheet() async {
     Map? s;
+    ClaudeUsage? usage;
+    final u = link
+        .call('usage', null, const Duration(seconds: 8))
+        .then((r) => ClaudeUsage.from(r as Map))
+        .then<ClaudeUsage?>((v) => v, onError: (_) => null); // an older agent has no usage
     try {
       s = await link.call('sys.status', null, const Duration(seconds: 8)) as Map;
+      usage = await u;
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
       return;
@@ -545,10 +587,12 @@ class _HomeState extends State<Home> {
     final lid = s['lidAwake'] == true;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (usage != null) ...[UsageCard(usage), const Divider(height: 28)],
             Text(s!['host'] ?? link.host, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             _row(Icons.battery_charging_full_rounded, 'Battery', s['battery'] ?? '—'),
