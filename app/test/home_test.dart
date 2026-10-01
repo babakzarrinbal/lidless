@@ -49,8 +49,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(terms.sessions, hasLength(2));
-    expect(find.text('New session'), findsOneWidget);
-    expect(find.text('Fix the lid'), findsOneWidget);
+    // Visible, not just in the tree: it once laid out 0 px wide over the sessions.
+    expect(find.text('New session').hitTestable(), findsOneWidget);
+    expect(find.text('Fix the lid').hitTestable(), findsOneWidget);
   });
 
   testWidgets('…and when the Mac connects after the page is up', (tester) async {
@@ -82,8 +83,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(terms.sessions, hasLength(2));
-    expect(find.text('New session'), findsOneWidget);
-    expect(find.text('Fix the lid'), findsOneWidget, reason: 'calls: ${link.calls}');
+    // Visible, not just in the tree: it once laid out 0 px wide over the sessions.
+    expect(find.text('New session').hitTestable(), findsOneWidget);
+    expect(find.text('Fix the lid').hitTestable(), findsOneWidget, reason: 'calls: ${link.calls}');
   });
 
   testWidgets('with just one session open, the app opens it instead of the recent page', (tester) async {

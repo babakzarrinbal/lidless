@@ -386,8 +386,9 @@ class _HomeState extends State<Home> {
       ],
     );
     if (cur != null) return stack;
-    // The sessions stay alive underneath.
-    return Stack(children: [Offstage(child: stack), Positioned.fill(child: _empty(all))]);
+    // The sessions stay alive underneath. expand: the offstage stack is 0×0,
+    // and the page would be sized to it (blank).
+    return Stack(fit: StackFit.expand, children: [Offstage(child: stack), _empty(all)]);
   }
 
   /// The recent sessions page: new session, the Mac's newest conversations

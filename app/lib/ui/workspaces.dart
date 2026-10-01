@@ -357,7 +357,7 @@ class _RecentListState extends State<RecentList> {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           SizedBox(width: 10),
-          Text('Asking the Mac for recent sessions…', style: TextStyle(color: C.dim)),
+          Flexible(child: Text('Asking the Mac for recent sessions…', style: TextStyle(color: C.dim))),
         ]),
       );
     }
