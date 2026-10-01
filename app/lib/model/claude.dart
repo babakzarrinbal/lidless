@@ -15,7 +15,7 @@ class Conversation {
         dir = m['dir'] as String? ?? '',
         tool = m['tool'] as String? ?? 'claude';
   final String id, title, prompt;
-  final String tool; // the agent that had it: claude or copilot
+  final String tool; // the agent that had it: claude, copilot, or vscode (read only)
   final String dir; // the folder (the recent list only)
   final DateTime mtime;
   final int size;
@@ -23,13 +23,13 @@ class Conversation {
   final int term; // …in this app's terminal with this id (0: elsewhere)
 
   static Future<List<Conversation>> list(Link link, String dir) async {
-    final r = await link.call('chat.sessions', {'dir': dir});
+    final r = await link.call('chat.sessions', {'dir': dir, 'vscode': true});
     return [for (final m in (r as List? ?? const []).cast<Map>()) Conversation.from(m)];
   }
 
   /// The newest conversations of every shared folder.
   static Future<List<Conversation>> recent(Link link) async {
-    final r = await link.call('chat.recent', null);
+    final r = await link.call('chat.recent', {'vscode': true});
     return [for (final m in (r as List? ?? const []).cast<Map>()) Conversation.from(m)];
   }
 }

@@ -22,7 +22,7 @@ certificate pin, keys, or tokens. Those live in untracked files (listed below).
 
 RPC methods (agent `session.go`, about line 540): `term.*` (list, open, attach,
 detach, resize, seen, rename, close; park/unpark only for terminals an old app
-parked), `chat.*` (read, older, sessions, recent, commands, stop), `fs.*`,
+parked), `chat.*` (read, older, sessions, recent, commands, stop; transcript reads a VS Code Copilot Chat, listed only when the app passes `vscode: true`), `fs.*`,
 `shell.list`/`shell.set`, `sys.status`, `usage`, `tokens.reset`. Events:
 `terms` (a terminal came or went, on any device), `term.exit`, `term.size`
 (the pty was resized: the redraw that follows is not news), `term.seen` (a

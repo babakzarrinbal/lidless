@@ -83,7 +83,7 @@ class WheelFix implements TerminalMouseHandler {
 
 /// The coding agents a session can run, by terminal kind.
 /// 'cli' is a plain shell as the main window.
-const tools = {'claude': 'Claude', 'copilot': 'Copilot', 'cli': 'Terminal'};
+const tools = {'claude': 'Claude', 'copilot': 'Copilot', 'cli': 'Terminal', 'vscode': 'VS Code'};
 
 /// A view over the terminals that share a session id: one agent terminal
 /// (Claude Code or Copilot) and any number of shells.

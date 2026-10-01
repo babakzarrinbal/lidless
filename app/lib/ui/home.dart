@@ -10,6 +10,7 @@ import '../net/link.dart';
 import '../net/notify.dart';
 import '../net/store.dart';
 import 'agent_extras.dart';
+import 'chat_view.dart' show TranscriptPage;
 import 'files_panel.dart';
 import 'macs.dart';
 import 'new_session.dart';
@@ -216,6 +217,16 @@ class _HomeState extends State<Home> {
   /// that agent.
   Future<void> _resumeIn(String dir, Conversation c, {String? flagsOf}) async {
     _scaffold.currentState?.closeDrawer();
+    if (c.tool == 'vscode') {
+      // VS Code's chat can't be resumed in a terminal: the phone reads it.
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TranscriptPage(link: link, id: c.id, title: c.title, dir: dir),
+        ),
+      );
+      return;
+    }
     final here = terms.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
     if (here != null) {
       _select(here.id);

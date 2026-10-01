@@ -545,6 +545,8 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Take    bool   `json:"take"` // term.unpark: quit the Claude that has the conversation elsewhere
 		Shell   string `json:"shell"`
 		Seen    int64  `json:"seen"`
+		Size    int64  `json:"size"`
+		VSCode  bool   `json:"vscode"` // chat.sessions/recent: VS Code's chats too (an app that can show them)
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -667,12 +669,26 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return chatSessions(dir, s.a.terms.all())
+		l, err := chatSessions(dir, s.a.terms.all())
+		if err == nil && p.VSCode {
+			l = mergeConversations(l, vscodeConversations(listMax, func(c *Conversation) bool { return c.Dir == dir }), listMax)
+		}
+		return l, err
 	case "chat.recent":
-		return chatRecent(s.a.terms.all(), 40, func(dir string) bool {
+		shared := func(dir string) bool {
 			_, err := resolve(roots, dir)
 			return err == nil
-		}), nil
+		}
+		l := chatRecent(s.a.terms.all(), 40, shared)
+		if p.VSCode {
+			l = mergeConversations(l, vscodeConversations(40, func(c *Conversation) bool { return shared(c.Dir) }), 40)
+		}
+		return l, nil
+	case "chat.transcript": // a VS Code chat, read-only: {"same": true} while size and mtime still match
+		return vscodeTranscript(p.Session, p.Size, p.Mtime, func(dir string) bool {
+			_, err := resolve(roots, dir)
+			return err == nil
+		})
 	case "chat.commands":
 		dir, _ := resolve(roots, p.Dir) // outside the shared folders: the user's commands only
 		return chatCommands(dir, p.Kind), nil

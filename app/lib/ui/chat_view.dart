@@ -9,6 +9,8 @@ import 'package:xterm/xterm.dart' show TerminalKey;
 
 import '../model/chat.dart';
 import '../model/terms.dart';
+import '../net/link.dart';
+import 'new_session.dart' show baseName;
 import 'theme.dart';
 
 /// The agent's conversation the way the Claude app shows it: your messages,
@@ -205,6 +207,124 @@ class _ChatViewState extends State<ChatView> {
           child: Text(s, textAlign: TextAlign.center, style: const TextStyle(color: C.dim, height: 1.5)),
         ),
       );
+}
+
+/// A conversation the phone can only read: a VS Code Copilot Chat on the Mac.
+/// It reads the chat again every few seconds while open (the Mac answers
+/// "same" when nothing changed), so every phone follows it as VS Code writes.
+class TranscriptPage extends StatefulWidget {
+  const TranscriptPage({super.key, required this.link, required this.id, required this.title, required this.dir});
+  final Link link;
+  final String id, title, dir;
+
+  @override
+  State<TranscriptPage> createState() => _TranscriptPageState();
+}
+
+class _TranscriptPageState extends State<TranscriptPage> {
+  final _scroll = ScrollController();
+  Timer? _every;
+  var _items = <ChatEntry>[];
+  int _size = 0, _mtime = 0;
+  bool _busy = false, _loaded = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+    _every = Timer.periodic(const Duration(seconds: 3), (_) => _read());
+  }
+
+  @override
+  void dispose() {
+    _every?.cancel();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _read() async {
+    if (_busy || !widget.link.online) return;
+    _busy = true;
+    try {
+      final r = await widget.link.call('chat.transcript', {'session': widget.id, 'size': _size, 'mtime': _mtime});
+      if (!mounted || r is! Map || r['same'] == true) return;
+      // Read whole each time: keep the tool cards that were open.
+      final open = {for (final e in _items) if (e.open) e.id};
+      final items = <ChatEntry>[], tools = <String, ChatEntry>{};
+      for (final m in (r['items'] as List? ?? const []).cast<Map>()) {
+        if (m['k'] == 'result') {
+          tools[m['id']]
+            ?..result = m['text'] as String? ?? ''
+            ..err = m['err'] == true;
+          continue;
+        }
+        final e = ChatEntry.from(m);
+        if (e.kind == 'tool') {
+          tools[e.id] = e;
+          e.open = open.contains(e.id);
+        }
+        items.add(e);
+      }
+      setState(() {
+        _items = items;
+        _size = ((r['size'] as num?) ?? 0).toInt();
+        _mtime = ((r['mtime'] as num?) ?? 0).toInt();
+        _loaded = true;
+        _error = null;
+      });
+    } on RpcError catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.code == 'unknown' ? 'This Mac\'s agent is too old to show VS Code chats: update it.' : e.message);
+      if (!_loaded) _every?.cancel();
+    } catch (_) {
+      // The Mac went away for a moment: the next read tries again.
+    } finally {
+      _busy = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    return Scaffold(
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
+          Text('VS Code · ${baseName(widget.dir)} · read only', style: const TextStyle(fontSize: 12, color: C.dim)),
+        ]),
+      ),
+      body: !_loaded
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(_error ?? 'Reading the conversation…',
+                    textAlign: TextAlign.center, style: const TextStyle(color: C.dim, height: 1.5)),
+              ),
+            )
+          : ListView.builder(
+              controller: _scroll,
+              reverse: true,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+              itemCount: items.length,
+              itemBuilder: (_, r) {
+                final i = items.length - 1 - r, e = items[i];
+                final prev = i > 0 ? items[i - 1].kind : '';
+                return Padding(
+                  key: ObjectKey(e),
+                  padding: EdgeInsets.only(top: i == 0 ? 0 : e.kind == 'tool' && prev == 'tool' ? 2.0 : 10.0),
+                  child: switch (e.kind) {
+                    'user' => _User(e.text),
+                    'text' => _Answer(e.text, last: i == items.length - 1 || items[i + 1].kind == 'user'),
+                    'tool' => _Tool(e, onToggle: () => setState(() => e.open = !e.open)),
+                    _ => _Note(e.text),
+                  },
+                );
+              },
+            ),
+    );
+  }
 }
 
 /// Your message; a queued one (typed while Claude works) is outlined and

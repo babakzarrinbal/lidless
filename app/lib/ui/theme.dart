@@ -139,5 +139,6 @@ String shellQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
 IconData toolIcon(String tool) => switch (tool) {
       'copilot' => Icons.flight_rounded,
       'cli' => Icons.terminal_rounded,
+      'vscode' => Icons.code_rounded,
       _ => Icons.auto_awesome_rounded,
     };
