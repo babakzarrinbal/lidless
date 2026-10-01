@@ -523,6 +523,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Session string `json:"session"`
 		Cmd     string `json:"cmd"`
 		Take    bool   `json:"take"` // term.unpark: quit the Claude that has the conversation elsewhere
+		Shell   string `json:"shell"`
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -553,7 +554,8 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if len(p.Session) > 64 || len(p.Kind) > 16 || len(p.Cmd) > 4096 || strings.ContainsAny(p.Cmd, "\r\n") {
 			return nil, &rpcError{"bad", "bad terminal options"}
 		}
-		t, err := s.a.terms.open(dir, p.Cols, p.Rows, p.Kind, p.Session, strings.TrimSpace(p.Cmd))
+		shell := pickShell(p.Shell, s.a.config().Shell, shells())
+		t, err := s.a.terms.open(shell, dir, p.Cols, p.Rows, p.Kind, p.Session, strings.TrimSpace(p.Cmd))
 		if err != nil {
 			return nil, err
 		}
@@ -678,6 +680,14 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return true, fsDelete(roots, p.Path)
 	case "sys.status":
 		return sysStatus(s.a), nil
+	case "shell.list":
+		return shellInfo(s.a.config()), nil
+	case "shell.set":
+		if err := s.a.setShell(p.Shell); err != nil {
+			return nil, err
+		}
+		logf("%s set the default shell to %q", s.device, p.Shell)
+		return shellInfo(s.a.config()), nil
 	}
 	return nil, &rpcError{"unknown", "unknown method " + method}
 }

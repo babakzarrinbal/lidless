@@ -54,7 +54,15 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   DateTime _pausedAt = DateTime.now();
 
   String get home => (info['home'] as String?) ?? '~';
-  String get host => (info['host'] as String?) ?? pairing.host;
+  /// The Mac's name on screen: the user's nickname, else its hostname.
+  String get host => pairing.nick ?? hostname;
+  String get hostname => (info['host'] as String?) ?? pairing.host;
+
+  /// Gives this Mac a nickname (null: back to its hostname).
+  void rename(String? nick) {
+    pairing = pairing.withNick(nick);
+    notifyListeners();
+  }
   bool get online => state == LinkState.online;
 
   void start() {
@@ -186,8 +194,11 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
     if (pairing.token != null || (host != null && host != pairing.host)) {
       final wasPairing = pairing.token != null;
       pairing = pairing.paired(host: host);
-      Store.savePairing(pairing);
-      if (wasPairing) onPaired?.call(pairing);
+      if (wasPairing && onPaired != null) {
+        onPaired!(pairing); // saves it (keeping the Mac's nickname, if any)
+      } else {
+        Store.savePairing(pairing);
+      }
     }
     _set(LinkState.online);
   }

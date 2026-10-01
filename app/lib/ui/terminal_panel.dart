@@ -9,10 +9,11 @@ import 'theme.dart';
 
 /// Tabs strip for a session's shells, for the shell pane's header.
 class TermTabs extends StatelessWidget {
-  const TermTabs({super.key, required this.terms, required this.session, required this.onNew});
+  const TermTabs({super.key, required this.terms, required this.session, required this.onNew, this.onPick});
   final Terms terms;
   final Session session;
   final VoidCallback onNew;
+  final VoidCallback? onPick; // hold +: pick the shell
 
   @override
   Widget build(BuildContext context) {
@@ -66,11 +67,19 @@ class TermTabs extends StatelessWidget {
           },
         ),
       ),
-      IconButton(
-        tooltip: 'New shell',
-        visualDensity: VisualDensity.compact,
-        icon: const Icon(Icons.add_rounded, size: 22),
-        onPressed: onNew,
+      GestureDetector(
+        onLongPress: onPick == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onPick!();
+              },
+        child: IconButton(
+          tooltip: 'New shell (hold to pick bash, zsh…)',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.add_rounded, size: 22),
+          onPressed: onNew,
+        ),
       ),
     ]);
   }

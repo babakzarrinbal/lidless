@@ -27,8 +27,9 @@ type Config struct {
 	Priv      string   `json:"priv"`    // the Mac's Noise static key (hex)
 	Pub       string   `json:"pub"`
 	Devices   []Device `json:"devices"`
-	Roots     []string `json:"roots"`     // folders the file browser may touch
-	KeepAwake bool     `json:"keepAwake"` // hold an idle-sleep assertion while running
+	Roots     []string `json:"roots"`           // folders the file browser may touch
+	KeepAwake bool     `json:"keepAwake"`       // hold an idle-sleep assertion while running
+	Shell     string   `json:"shell,omitempty"` // default shell for new terminals; empty: the login shell
 }
 
 // Pairing is a one-time token the next phone must present (written by `pair`).

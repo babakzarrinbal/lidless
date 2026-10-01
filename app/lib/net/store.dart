@@ -15,6 +15,7 @@ class MacPairing {
   final String host;
   final String? token; // one-time pairing token, dropped after first success
   final String? phoneKey; // this phone's private key for this Mac (hex)
+  final String? nick; // the user's name for this Mac; null: its hostname
 
   const MacPairing({
     required this.relay,
@@ -24,12 +25,19 @@ class MacPairing {
     required this.host,
     this.token,
     this.phoneKey,
+    this.nick,
   });
 
   KeyPair get key => KeyPair(unhex(phoneKey!));
 
+  /// What to call this Mac on screen.
+  String get name => nick ?? host;
+
   MacPairing withKey(String key) => MacPairing(
-      relay: relay, pin: pin, room: room, macPub: macPub, host: host, token: token, phoneKey: key);
+      relay: relay, pin: pin, room: room, macPub: macPub, host: host, token: token, phoneKey: key, nick: nick);
+
+  MacPairing withNick(String? nick) => MacPairing(
+      relay: relay, pin: pin, room: room, macPub: macPub, host: host, token: token, phoneKey: phoneKey, nick: nick);
 
   /// Parses `mr1.<base64url json>` (from the QR, a paste, or the deep link).
   static MacPairing parse(String code) {
@@ -57,7 +65,7 @@ class MacPairing {
   }
 
   MacPairing paired({String? host}) => MacPairing(
-      relay: relay, pin: pin, room: room, macPub: macPub, host: host ?? this.host, phoneKey: phoneKey);
+      relay: relay, pin: pin, room: room, macPub: macPub, host: host ?? this.host, phoneKey: phoneKey, nick: nick);
 
   Map<String, dynamic> toJson() => {
         'relay': relay,
@@ -67,6 +75,7 @@ class MacPairing {
         'host': host,
         if (token != null) 'token': token,
         if (phoneKey != null) 'phoneKey': phoneKey,
+        if (nick != null) 'nick': nick,
       };
 
   factory MacPairing.fromJson(Map<String, dynamic> m) => MacPairing(
@@ -77,6 +86,7 @@ class MacPairing {
         host: m['host'] ?? 'Mac',
         token: m['token'],
         phoneKey: m['phoneKey'],
+        nick: m['nick'],
       );
 }
 

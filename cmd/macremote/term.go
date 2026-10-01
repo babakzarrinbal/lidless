@@ -192,11 +192,7 @@ func shellEnv() []string {
 
 // open starts a login shell in dir on a fresh pty. A non-empty run is typed
 // into it as the first command, so quitting that program leaves the shell.
-func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (*Term, error) {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
+func (m *Terms) open(shell, dir string, cols, rows uint16, kind, session, run string) (*Term, error) {
 	if cols == 0 || rows == 0 {
 		cols, rows = 80, 24
 	}
@@ -204,11 +200,18 @@ func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (
 	if kind == "copilot" {
 		var err error
 		if typed, err = copilotCommand(shell, run); err != nil {
-			return nil, err
+			// bash's login profile often lacks Homebrew's PATH; zsh's has it.
+			if shell == "/bin/zsh" {
+				return nil, err
+			}
+			if typed, err = copilotCommand("/bin/zsh", run); err != nil {
+				return nil, err
+			}
+			shell = "/bin/zsh"
 		}
 	}
 	cmd := exec.Command(shell, "-l")
-	cmd.Env = shellEnv()
+	cmd.Env = append(shellEnv(), "SHELL="+shell) // the last one wins
 	cmd.Dir = dir
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: cols, Rows: rows})
 	if err != nil {

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import 'files_panel.dart';
+import 'shells.dart';
 import 'theme.dart';
 
 const _flagChips = {
@@ -32,6 +33,8 @@ class _NewSessionPageState extends State<NewSessionPage> {
   String? _error;
   bool _loading = false, _starting = false, _flagsTouched = false;
   String _tool = 'claude';
+  String? _shell; // null: the Mac's default
+  ShellInfo? _shells;
 
   Link get link => widget.terms.link;
   String get _mac => macKey(link);
@@ -48,6 +51,14 @@ class _NewSessionPageState extends State<NewSessionPage> {
       final start = widget.dir ?? (_recent.isEmpty ? link.home : parentOf(_recent.first));
       _go(start);
     });
+    widget.terms.shellInfo().then((i) {
+      if (mounted) setState(() => _shells = i);
+    }, onError: (_) {});
+  }
+
+  Future<void> _pickShell() async {
+    final s = await pickShell(context, widget.terms, title: 'Run in', selected: _shell);
+    if (s != null && mounted) setState(() => _shell = s == _shells?.current ? null : s);
   }
 
   @override
@@ -119,7 +130,7 @@ class _NewSessionPageState extends State<NewSessionPage> {
     setState(() => _starting = true);
     try {
       final flags = _flags.text.trim();
-      final id = await widget.terms.start(dir, flags, tool: _tool);
+      final id = await widget.terms.start(dir, flags, tool: _tool, shell: _shell);
       final p = _prefs;
       if (p != null) {
         _recent = [dir, ..._recent.where((d) => d != dir)].take(8).toList();
@@ -250,13 +261,27 @@ class _NewSessionPageState extends State<NewSessionPage> {
             ),
         ]),
         const SizedBox(height: 10),
-        FilledButton.icon(
-          onPressed: cwd == null || _starting || !link.online ? null : _start,
-          icon: _starting
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(cwd == null ? 'Start' : 'Start ${tools[_tool]} in ${baseName(cwd)}'),
-        ),
+        Row(children: [
+          if (_shells != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: OutlinedButton.icon(
+                onPressed: _pickShell,
+                icon: const Icon(Icons.expand_more_rounded, size: 18),
+                label: Text(shellName(_shell ?? _shells!.current), style: const TextStyle(fontFamily: mono)),
+              ),
+            ),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: cwd == null || _starting || !link.online ? null : _start,
+              icon: _starting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.play_arrow_rounded),
+              label: Text(cwd == null ? 'Start' : 'Start ${tools[_tool]} in ${baseName(cwd)}',
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ]),
       ]),
     );
   }

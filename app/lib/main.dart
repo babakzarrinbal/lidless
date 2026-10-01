@@ -164,6 +164,10 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     final withKey = p.withKey(Store.newKey()); // every Mac gets its own phone key
     final a = Link(withKey, withKey.key, deviceName: name);
     a.onPaired = (paired) {
+      // Pairing a Mac again keeps the name the user gave it.
+      final nick = _macs.where((m) => m.room == paired.room).firstOrNull?.nick;
+      if (nick != null) paired = paired.withNick(nick);
+      Store.savePairing(paired);
       if (_attempt != a) return;
       // Let the handshake callback finish before tearing this link down.
       scheduleMicrotask(() {
@@ -199,6 +203,27 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  Future<void> _rename(MacPairing p, String? nick) async {
+    final link = _link;
+    if (link != null && link.pairing.room == p.room) {
+      link.rename(nick);
+      p = link.pairing;
+    } else {
+      p = p.withNick(nick);
+    }
+    await Store.savePairing(p);
+    _macs = [for (final m in _macs) m.room == p.room ? p : m];
+    if (mounted) setState(() {});
+  }
+
+  /// Forgets any paired Mac; the one on screen goes as [_unpair] does.
+  Future<void> _forget(MacPairing p) async {
+    if (_link?.pairing.room == p.room) return _unpair();
+    await Store.forget(p);
+    _macs = _macs.where((m) => m.room != p.room).toList();
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -230,6 +255,8 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
         onAddMac: () => setState(() => _adding = true),
         onLock: _lockNow,
         onUnpair: _unpair,
+        onRename: _rename,
+        onForget: _forget,
       );
     }
     return MaterialApp(

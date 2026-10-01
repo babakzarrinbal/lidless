@@ -321,6 +321,7 @@ class Terms extends ChangeNotifier {
     String kind = 'shell',
     String? cmd,
     TermTab? sizeLike,
+    String? shell, // a path from [shellInfo]; null: the Mac's default
   }) async {
     final like = sizeLike?.terminal;
     final info = await link.call('term.open', {
@@ -328,6 +329,7 @@ class Terms extends ChangeNotifier {
       'kind': kind,
       'session': session,
       'cmd': ?cmd,
+      'shell': ?shell,
       'cols': like?.viewWidth ?? 80,
       'rows': like?.viewHeight ?? 24,
     }) as Map;
@@ -343,11 +345,35 @@ class Terms extends ChangeNotifier {
   }
 
   /// Starts a new session: [tool] (a key of [tools]) in [dir] with [flags].
-  Future<String> start(String dir, String flags, {String tool = 'claude'}) async {
+  Future<String> start(String dir, String flags, {String tool = 'claude', String? shell}) async {
     final r = Random.secure();
     final id = List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-    await open(session: id, dir: dir, kind: tool, cmd: command(tool, flags));
+    await open(session: id, dir: dir, kind: tool, cmd: command(tool, flags), shell: shell);
     return id;
+  }
+
+  ShellInfo? _shells;
+  int _shellsEpoch = -1;
+
+  /// The shells the Mac offers and its default; null from an agent too old
+  /// to choose.
+  Future<ShellInfo?> shellInfo() async {
+    if (_shells != null && _shellsEpoch == link.epoch) return _shells;
+    try {
+      _shells = ShellInfo.from(await link.call('shell.list') as Map);
+      _shellsEpoch = link.epoch;
+      return _shells;
+    } on RpcError catch (e) {
+      if (e.code == 'unknown') return null;
+      rethrow;
+    }
+  }
+
+  /// Makes [shell] (empty: the account's login shell) the Mac's default.
+  Future<ShellInfo> setDefaultShell(String shell) async {
+    _shells = ShellInfo.from(await link.call('shell.set', {'shell': shell}) as Map);
+    _shellsEpoch = link.epoch;
+    return _shells!;
   }
 
   /// What to type into the session's first shell; null for a plain shell.
@@ -505,3 +531,19 @@ class Terms extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// The shells a Mac offers (/etc/shells) and the one new terminals get.
+class ShellInfo {
+  ShellInfo.from(Map m)
+      : shells = [...((m['shells'] as List?) ?? const []).cast<String>()],
+        def = m['default'] as String? ?? '',
+        login = m['login'] as String? ?? '';
+  final List<String> shells;
+  final String def; // set from the phone; empty: the login shell
+  final String login; // the account's shell
+
+  String get current => def.isEmpty ? login : def;
+}
+
+/// "zsh" for "/bin/zsh".
+String shellName(String path) => path.substring(path.lastIndexOf('/') + 1);

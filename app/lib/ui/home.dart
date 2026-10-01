@@ -8,6 +8,7 @@ import '../net/link.dart';
 import '../net/store.dart';
 import 'agent_extras.dart';
 import 'files_panel.dart';
+import 'macs.dart';
 import 'new_session.dart';
 import 'session_view.dart';
 import 'theme.dart';
@@ -25,12 +26,16 @@ class Home extends StatefulWidget {
     required this.onAddMac,
     required this.onLock,
     required this.onUnpair,
+    required this.onRename,
+    required this.onForget,
   });
   final Link link;
   final Terms terms;
   final List<MacPairing> macs;
   final void Function(MacPairing) onSwitch;
   final VoidCallback onAddMac, onLock, onUnpair;
+  final Future<void> Function(MacPairing, String?) onRename;
+  final Future<void> Function(MacPairing) onForget;
 
   @override
   State<Home> createState() => _HomeState();
@@ -518,7 +523,7 @@ class _HomeState extends State<Home> {
                 ListTile(
                   dense: true,
                   leading: Icon(Icons.laptop_mac_rounded, color: m.room == link.pairing.room ? C.accent : C.dim),
-                  title: Text(m.room == link.pairing.room ? link.host : m.host,
+                  title: Text(m.room == link.pairing.room ? link.host : m.name,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   trailing: m.room == link.pairing.room ? const Icon(Icons.check_rounded, color: C.accent) : null,
                   onTap: () {
@@ -528,11 +533,12 @@ class _HomeState extends State<Home> {
                 ),
               ListTile(
                 dense: true,
-                leading: const Icon(Icons.add_link_rounded, color: C.dim),
-                title: const Text('Pair another Mac'),
+                leading: const Icon(Icons.tune_rounded, color: C.dim),
+                title: const Text('Manage Macs'),
+                subtitle: const Text('Pair, rename, remove, shell', style: TextStyle(fontSize: 12)),
                 onTap: () {
                   _scaffold.currentState?.closeDrawer();
-                  widget.onAddMac();
+                  _manageMacs();
                 },
               ),
               const Divider(height: 20),
@@ -703,6 +709,23 @@ class _HomeState extends State<Home> {
   }
 
   // ---- menus ----
+
+  void _manageMacs() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MacsPage(
+          link: link,
+          terms: terms,
+          macs: widget.macs,
+          onSwitch: widget.onSwitch,
+          onAdd: widget.onAddMac,
+          onRename: widget.onRename,
+          onForget: widget.onForget,
+        ),
+      ),
+    );
+  }
 
   Future<void> _unpair() async {
     final ok = await showDialog<bool>(

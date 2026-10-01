@@ -302,23 +302,29 @@ class _RecentListState extends State<RecentList> {
   }
 
   bool _failed = false;
-  int _tries = 0;
+  int _tries = 0, _epoch = -1; // _epoch: the connection the list came over
   String? _error; // why the last fetch failed, shown with a retry
 
+  // A reconnect (the app was away, the network changed) may have lost the
+  // question: ask again on every new connection until one answers.
   void _online() {
-    if ((_list == null || _failed) && widget.link.online) _fetch();
+    if (!widget.link.online) return;
+    if (_list == null || _failed || _epoch != widget.link.epoch) _fetch();
   }
 
   Future<void> _fetch() async {
     final load = widget.load;
     if (_busy || (load == null && !widget.link.online)) return;
     _busy = true;
+    final epoch = widget.link.epoch;
+    if (mounted && _list != null) setState(() {}); // the refresh button spins
     try {
       final list = await (load ?? () => Conversation.recent(widget.link))();
       if (!mounted) return;
       _seen.listed(list, openTerms(widget.sessions));
       _failed = false;
       _tries = 0;
+      _epoch = epoch;
       setState(() {
         _list = list;
         _error = null;
@@ -335,6 +341,8 @@ class _RecentListState extends State<RecentList> {
       if (mounted && widget.load == null && ++_tries < 5) Timer(const Duration(seconds: 3), _online);
     } finally {
       _busy = false;
+      // The connection changed while asking: the answer may never come.
+      if (mounted && widget.link.online && widget.link.epoch != epoch) scheduleMicrotask(_online);
     }
   }
 
@@ -344,7 +352,11 @@ class _RecentListState extends State<RecentList> {
     if (list == null) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 10),
+          Text('Asking the Mac for recent sessions…', style: TextStyle(color: C.dim)),
+        ]),
       );
     }
     final midnight = DateUtils.dateOnly(DateTime.now());
@@ -356,7 +368,9 @@ class _RecentListState extends State<RecentList> {
         IconButton(
           tooltip: 'Refresh',
           visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.refresh_rounded, size: 19, color: C.dim),
+          icon: _busy
+              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.refresh_rounded, size: 19, color: C.dim),
           onPressed: _fetch,
         ),
       ]),

@@ -7,6 +7,7 @@ import '../net/link.dart';
 import 'agent_pane.dart';
 import 'files_panel.dart';
 import 'new_session.dart';
+import 'shells.dart';
 import 'terminal_panel.dart';
 import 'theme.dart';
 
@@ -81,17 +82,23 @@ class SessionViewState extends State<SessionView> {
     if (_focus != p) setState(() => _focus = p);
   }
 
-  Future<TermTab?> _newShell() async {
+  Future<TermTab?> _newShell({String? shell}) async {
     try {
       return await terms.open(
         session: session.id,
         dir: session.dir,
         sizeLike: terms.activeShell(session),
+        shell: shell,
       );
     } on RpcError catch (e) {
       if (mounted) toast(context, e.message, error: true);
       return null;
     }
+  }
+
+  Future<void> _pickShell() async {
+    final shell = await pickShell(context, terms, title: 'New shell with');
+    if (shell != null && mounted) _newShell(shell: shell);
   }
 
   void _toggle(Pane p) {
@@ -316,7 +323,7 @@ class SessionViewState extends State<SessionView> {
                             ),
                           )
                         : shell
-                            ? TermTabs(terms: terms, session: session, onNew: _newShell)
+                            ? TermTabs(terms: terms, session: session, onNew: _newShell, onPick: _pickShell)
                             : Breadcrumbs(files: widget.files),
                   ),
                   IconButton(
