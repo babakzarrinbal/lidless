@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -137,5 +138,31 @@ func TestHolderClients(t *testing.T) {
 	h.out.exit(5)
 	if p := expect(agent, 'x'); binary.BigEndian.Uint32(p) != 5 {
 		t.Fatalf("exit %v", p)
+	}
+}
+
+// TestInputQueues: input for a program that does not read it must not block
+// the client's frame loop, or a hangup behind it would never be read.
+func TestInputQueues(t *testing.T) {
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pr.Close()
+	h := &holder{pty: pw}
+	done := make(chan struct{})
+	go func() {
+		h.input(bytes.Repeat([]byte{'x'}, 1<<20)) // far more than a pipe holds
+		h.input([]byte("end"))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("input blocked")
+	}
+	got, err := io.ReadAll(io.LimitReader(pr, 1<<20+3))
+	if err != nil || len(got) != 1<<20+3 || string(got[1<<20:]) != "end" {
+		t.Fatalf("read %d bytes, %v", len(got), err)
 	}
 }

@@ -230,6 +230,8 @@ type holder struct {
 	out     *ring
 	pty     *os.File
 	inMu    sync.Mutex
+	inQ     [][]byte // input waiting for the pty, in order
+	inBusy  bool     // a goroutine is draining inQ
 	clients map[*holdClient]struct{}
 	phone   [2]uint16 // the phones' last size
 	seq     int
@@ -255,7 +257,10 @@ func cmdHold(args []string) {
 	if *typed == "" {
 		*typed = *run
 	}
-	signal.Ignore(syscall.SIGHUP, syscall.SIGPIPE)
+	// Caught, not ignored: an ignored signal stays ignored across exec, so
+	// the shell and everything it runs would ignore SIGHUP (hangup) and
+	// SIGPIPE (`yes | head`).
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGHUP, syscall.SIGPIPE)
 	if err := os.MkdirAll(termsDir(), 0o700); err != nil {
 		die("%v", err)
 	}
@@ -344,12 +349,32 @@ func (h *holder) snapshot() holdInfo {
 	return i
 }
 
-// input writes to the pty off the caller's goroutine order-preserving: a
-// program that does not read its input blocks only this client.
+// input queues p for the pty, in order. A program that does not read its
+// input must not hold up a client's other frames, a hangup least of all.
 func (h *holder) input(p []byte) {
 	h.inMu.Lock()
-	defer h.inMu.Unlock()
-	h.pty.Write(p)
+	h.inQ = append(h.inQ, p)
+	start := !h.inBusy
+	h.inBusy = true
+	h.inMu.Unlock()
+	if start {
+		go h.drainInput()
+	}
+}
+
+func (h *holder) drainInput() {
+	for {
+		h.inMu.Lock()
+		if len(h.inQ) == 0 {
+			h.inBusy = false
+			h.inMu.Unlock()
+			return
+		}
+		p := h.inQ[0]
+		h.inQ = h.inQ[1:]
+		h.inMu.Unlock()
+		h.pty.Write(p)
+	}
 }
 
 func (h *holder) serve(c net.Conn) {
@@ -414,7 +439,7 @@ func (h *holder) serve(c net.Conn) {
 			}
 			h.mu.Unlock()
 			if !h.resize() && p[4] == 'L' {
-				h.redraw()
+				go h.redraw()
 			}
 		case 'h':
 			h.hangup()
