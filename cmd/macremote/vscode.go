@@ -9,9 +9,10 @@ package main
 // object has "customTitle" and "requests": each one's "message.text" is what
 // was typed and "response" the parts of the answer.
 //
-// The phone can read these but not carry them on: only VS Code can, so they
-// are listed only when the phone asks for them (older apps would try to
-// resume them in a terminal).
+// Only VS Code can add to these chats: the phone reads them, and carries one
+// on in a shared terminal by handing its transcript to Copilot or Claude
+// (chat.handoff). They are listed only when the phone asks for them (older
+// apps would try to resume them in a terminal).
 
 import (
 	"encoding/json"
@@ -276,6 +277,58 @@ func vscodeTranscript(id string, size, mtime int64, keep func(dir string) bool) 
 }
 
 const vscodeMax = 600
+
+// vscodeHandoff writes a chat out as markdown for an agent in a shared
+// terminal to carry on (only VS Code can add to the chat itself), and the
+// prompt that hands it over.
+func vscodeHandoff(id string, keep func(dir string) bool) (map[string]any, error) {
+	path, dir := vscodeFind(id)
+	if path == "" || !keep(dir) {
+		return nil, errors.New("no such VS Code chat in a shared folder")
+	}
+	m, err := vscodeState(path)
+	if err != nil {
+		return nil, err
+	}
+	var b strings.Builder
+	title, _ := m["customTitle"].(string)
+	b.WriteString("# " + firstLine(title, "VS Code chat") + "\n\nA GitHub Copilot Chat conversation in VS Code, in " + tilde(dir) + ".\n")
+	for _, it := range vscodeItems(m) {
+		switch it.K {
+		case "user":
+			b.WriteString("\n## Me\n\n" + it.Text + "\n")
+		case "text":
+			b.WriteString("\n## Copilot\n\n" + it.Text + "\n")
+		case "tool":
+			b.WriteString("\n- " + it.Name + ": " + it.Text + "\n")
+		case "result":
+			if it.Err {
+				b.WriteString("  (failed: " + firstLine(it.Text) + ")\n")
+			}
+		case "note":
+			b.WriteString("\n> " + firstLine(it.Text) + "\n")
+		}
+	}
+	s := b.String()
+	if len(s) > vscodeHandoffMax { // the newest part: an agent reads the rest from the start if it needs it
+		s = "(The start of this conversation is left out.)\n" + s[len(s)-vscodeHandoffMax:]
+	}
+	home, _ := os.UserHomeDir()
+	out := filepath.Join(home, "Library", "Caches", "macremote", "vscode", id+".md")
+	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(out, []byte(s), 0o600); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"path": out,
+		"prompt": "This carries on a conversation I had in VS Code's Copilot Chat. Read its transcript, " + out +
+			", then tell me in a few lines where we left off, and wait for my next message.",
+	}, nil
+}
+
+const vscodeHandoffMax = 300 << 10
 
 func vscodeItems(m map[string]any) []ChatItem {
 	items := []ChatItem{}

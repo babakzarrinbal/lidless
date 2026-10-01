@@ -209,13 +209,16 @@ class _ChatViewState extends State<ChatView> {
       );
 }
 
-/// A conversation the phone can only read: a VS Code Copilot Chat on the Mac.
-/// It reads the chat again every few seconds while open (the Mac answers
-/// "same" when nothing changed), so every phone follows it as VS Code writes.
+/// A VS Code Copilot Chat on the Mac. Only VS Code can add to it, so the
+/// phone reads it (again every few seconds while open; the Mac answers "same"
+/// when nothing changed) and offers to carry it on in a shared terminal,
+/// where every device and the Mac follow it like any session.
 class TranscriptPage extends StatefulWidget {
-  const TranscriptPage({super.key, required this.link, required this.id, required this.title, required this.dir});
+  const TranscriptPage(
+      {super.key, required this.link, required this.id, required this.title, required this.dir, this.onContinue});
   final Link link;
   final String id, title, dir;
+  final Future<bool> Function(String tool)? onContinue; // started: true
 
   @override
   State<TranscriptPage> createState() => _TranscriptPageState();
@@ -226,8 +229,42 @@ class _TranscriptPageState extends State<TranscriptPage> {
   Timer? _every;
   var _items = <ChatEntry>[];
   int _size = 0, _mtime = 0;
-  bool _busy = false, _loaded = false;
+  bool _busy = false, _loaded = false, _starting = false;
   String? _error;
+
+  /// Picks the agent, then hands the chat to it in a shared terminal.
+  Future<void> _continue() async {
+    final tool = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 6),
+            child: Text(
+                'VS Code\'s chat can only grow inside VS Code. This starts a session in a shared terminal that reads '
+                'the chat so far and carries on: every phone and the Mac (macremote attach) see it live.',
+                style: TextStyle(color: C.dim, height: 1.4)),
+          ),
+          for (final t in const ['copilot', 'claude'])
+            ListTile(
+              leading: Icon(toolIcon(t)),
+              title: Text('Continue with ${tools[t]}'),
+              onTap: () => Navigator.pop(ctx, t),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (tool == null || !mounted) return;
+    setState(() => _starting = true);
+    final ok = await widget.onContinue!(tool);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _starting = false);
+    }
+  }
 
   @override
   void initState() {
@@ -292,9 +329,23 @@ class _TranscriptPageState extends State<TranscriptPage> {
         titleSpacing: 0,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
-          Text('VS Code · ${baseName(widget.dir)} · read only', style: const TextStyle(fontSize: 12, color: C.dim)),
+          Text('VS Code · ${baseName(widget.dir)}', style: const TextStyle(fontSize: 12, color: C.dim)),
         ]),
       ),
+      bottomNavigationBar: widget.onContinue == null || !_loaded
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+                child: FilledButton.icon(
+                  onPressed: _starting ? null : _continue,
+                  icon: _starting
+                      ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.devices_rounded),
+                  label: const Text('Continue on all devices'),
+                ),
+              ),
+            ),
       body: !_loaded
           ? Center(
               child: Padding(

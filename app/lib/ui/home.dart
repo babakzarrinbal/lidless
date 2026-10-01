@@ -222,7 +222,8 @@ class _HomeState extends State<Home> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => TranscriptPage(link: link, id: c.id, title: c.title, dir: dir),
+          builder: (_) => TranscriptPage(
+              link: link, id: c.id, title: c.title, dir: dir, onContinue: (tool) => _carryOn(dir, c, tool)),
         ),
       );
       return;
@@ -274,6 +275,32 @@ class _HomeState extends State<Home> {
       if (mounted) _select(id);
     } on RpcError catch (e) {
       if (mounted) toast(context, e.message, error: true);
+    }
+  }
+
+  /// Carries a VS Code chat on with [tool] in a new shared session, which
+  /// reads the chat's transcript first. True once it started.
+  Future<bool> _carryOn(String dir, Conversation c, String tool) async {
+    try {
+      final h = await link.call('chat.handoff', {'session': c.id}) as Map;
+      // The flags of the folder's newest session of that agent, without what resumed it.
+      final last = terms.sessions.where((s) => s.dir == dir && s.tool == tool).lastOrNull?.id;
+      final base = continueFlags(_prefs?.getString('sessFlags.$last') ?? '').replaceFirst('--continue', '').trim();
+      final path = h['path'] as String, prompt = shellQuote(h['prompt'] as String);
+      // Both agents may read the transcript's folder without asking. The
+      // prompt goes first: --add-dir takes every word after it as a folder.
+      final add = '--add-dir ${shellQuote(path.substring(0, path.lastIndexOf('/')))}';
+      final id = await terms.start(
+          dir, [if (tool == 'copilot') '-i', prompt, base, add].where((s) => s.isNotEmpty).join(' '),
+          tool: tool);
+      await _prefs?.setString('sessFlags.$id', base);
+      if (mounted) _select(id);
+      return true;
+    } on RpcError catch (e) {
+      if (mounted) {
+        toast(context, e.code == 'unknown' ? 'Update this Mac\'s agent to continue VS Code chats' : e.message, error: true);
+      }
+      return false;
     }
   }
 

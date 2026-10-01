@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,19 @@ func TestVSCodeChat(t *testing.T) {
 	}
 	if again, _ := vscodeTranscript(id, r["size"].(int64), r["mtime"].(int64), shared); again["same"] != true {
 		t.Errorf("unchanged file read again: %v", again)
+	}
+	h, err := vscodeHandoff(id, shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, _ := os.ReadFile(h["path"].(string))
+	for _, w := range []string{"# Build fix", "## Me\n\nfix the build", "## Copilot\n\nLooking at it.", "- Bash: go build\n  (failed: fail)", "> network error"} {
+		if !strings.Contains(string(md), w) {
+			t.Errorf("handoff lacks %q:\n%s", w, md)
+		}
+	}
+	if !strings.Contains(h["prompt"].(string), h["path"].(string)) {
+		t.Errorf("prompt: %v", h["prompt"])
 	}
 	if _, err := vscodeTranscript(id, 0, 0, func(string) bool { return false }); err == nil {
 		t.Error("a chat outside the shared folders was read")

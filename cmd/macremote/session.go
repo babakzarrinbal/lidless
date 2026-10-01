@@ -689,6 +689,11 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			_, err := resolve(roots, dir)
 			return err == nil
 		})
+	case "chat.handoff": // a VS Code chat written out for an agent in a shared terminal: {"path", "prompt"}
+		return vscodeHandoff(p.Session, func(dir string) bool {
+			_, err := resolve(roots, dir)
+			return err == nil
+		})
 	case "chat.commands":
 		dir, _ := resolve(roots, p.Dir) // outside the shared folders: the user's commands only
 		return chatCommands(dir, p.Kind), nil
