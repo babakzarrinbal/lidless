@@ -1,3 +1,4 @@
 bin/
 build/
 .DS_Store
+deploy/relay-linux-amd64

@@ -21,6 +21,13 @@ phone ──WSS──▶ relay (your.server:8460) ◀──WSS── macremote a
   `macremote/1`, tested against flynn/noise vectors), xterm terminal tabs,
   file browser and code editor (re_editor), biometric lock.
 
+## Install
+
+On the Mac, `brew install babakzarrinbal/macremote/macremote`, then
+`brew services start macremote` and `macremote pair`. Scan the code with the
+app. That uses the official relay; [docs/hosting.md](docs/hosting.md) covers
+how it is set up and how to run your own.
+
 ## Sessions
 
 The app's main screen is one session: a folder on the Mac running Claude Code,
