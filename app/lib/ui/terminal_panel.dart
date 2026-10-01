@@ -67,21 +67,28 @@ class TermTabs extends StatelessWidget {
           },
         ),
       ),
-      GestureDetector(
-        onLongPress: onPick == null
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                onPick!();
-              },
-        child: IconButton(
-          tooltip: 'New shell (hold to pick bash, zsh…)',
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.add_rounded, size: 22),
-          onPressed: onNew,
-        ),
+      // No tooltip on +: it would take the long press.
+      IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.add_rounded, size: 22),
+        onPressed: onNew,
+        onLongPress: onPick == null ? null : _pick,
       ),
+      if (onPick != null)
+        IconButton(
+          tooltip: 'New shell with… (bash, zsh)',
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints(minWidth: 28),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.arrow_drop_down_rounded, size: 22),
+          onPressed: _pick,
+        ),
     ]);
+  }
+
+  void _pick() {
+    HapticFeedback.selectionClick();
+    onPick!();
   }
 
   Future<void> _tabMenu(BuildContext context, TermTab t) async {

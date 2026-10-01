@@ -58,7 +58,13 @@ class _NewSessionPageState extends State<NewSessionPage> {
 
   Future<void> _pickShell() async {
     final s = await pickShell(context, widget.terms, title: 'Run in', selected: _shell);
-    if (s != null && mounted) setState(() => _shell = s == _shells?.current ? null : s);
+    // The page may have opened before the Mac answered: the sheet asked again.
+    final i = await widget.terms.shellInfo().catchError((_) => _shells);
+    if (!mounted) return;
+    setState(() {
+      _shells = i ?? _shells;
+      if (s != null) _shell = s == _shells?.current ? null : s;
+    });
   }
 
   @override
@@ -262,15 +268,14 @@ class _NewSessionPageState extends State<NewSessionPage> {
         ]),
         const SizedBox(height: 10),
         Row(children: [
-          if (_shells != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: OutlinedButton.icon(
-                onPressed: _pickShell,
-                icon: const Icon(Icons.expand_more_rounded, size: 18),
-                label: Text(shellName(_shell ?? _shells!.current), style: const TextStyle(fontFamily: mono)),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: OutlinedButton.icon(
+              onPressed: _pickShell,
+              icon: const Icon(Icons.expand_more_rounded, size: 18),
+              label: Text(shellName(_shell ?? _shells?.current ?? 'shell'), style: const TextStyle(fontFamily: mono)),
             ),
+          ),
           Expanded(
             child: FilledButton.icon(
               onPressed: cwd == null || _starting || !link.online ? null : _start,

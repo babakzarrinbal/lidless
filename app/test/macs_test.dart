@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:macremote/model/terms.dart';
 import 'package:macremote/net/store.dart';
 import 'package:macremote/ui/macs.dart';
+import 'package:macremote/ui/terminal_panel.dart';
 
 import 'home_test.dart' show FakeLink;
 
@@ -23,6 +24,23 @@ void main() {
     expect(i.current, '/bin/zsh');
     expect(ShellInfo.from({'shells': [], 'default': '/bin/bash', 'login': '/bin/zsh'}).current, '/bin/bash');
     expect(shellName('/opt/homebrew/bin/fish'), 'fish');
+  });
+
+  testWidgets('shell tabs: holding + or tapping ▾ picks the shell; tapping + opens the default', (tester) async {
+    final link = FakeLink({'term.list': []});
+    var picks = 0, news = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TermTabs(terms: Terms(link), session: Session('s', '/tmp'), onNew: () => news++, onPick: () => picks++),
+      ),
+    ));
+    await tester.longPress(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    expect(picks, 1);
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    expect((picks, news), (2, 1));
   });
 
   testWidgets('Macs page: rename and remove another Mac, see the shell', (tester) async {
