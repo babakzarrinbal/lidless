@@ -27,7 +27,9 @@ RELAY_PORT=8460
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export PATH="$HOME/tools/flutter/bin:/opt/homebrew/bin:$PATH"
-export ANDROID_SERIAL=${ANDROID_SERIAL:-192.168.2.118:5555}
+# The Samsung's wireless adb port changes on every reconnect: take whichever is attached.
+samsung() { adb devices 2>/dev/null | awk '/^192\.168\.2\.118:[0-9]+\tdevice/ {print $1; exit}'; }
+export ANDROID_SERIAL=${ANDROID_SERIAL:-$(samsung)}
 APP_ID=org.zarrinbal.macremote
 LOGS=$ROOT/build/logs
 mkdir -p "$LOGS" bin
