@@ -14,6 +14,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,6 +30,10 @@ import (
 
 const label = "org.zarrinbal.macremote"
 
+// The relay a packaged build talks to unless `init` says otherwise; set with
+// -ldflags "-X main.defaultRelay=host:port -X main.defaultPin=<sha256>".
+var defaultRelay, defaultPin string
+
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "macremote: "+format+"\n", a...)
 	os.Exit(1)
@@ -36,7 +41,7 @@ func die(format string, a ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: macremote init|pair|devices|revoke|install|uninstall|status|serve")
+		fmt.Fprintln(os.Stderr, "usage: macremote init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
@@ -57,6 +62,10 @@ func main() {
 		cmdStatus()
 	case "serve":
 		cmdServe()
+	case "statusline":
+		cmdStatusline(args)
+	case "usage":
+		cmdUsage()
 	default:
 		die("unknown command %q", os.Args[1])
 	}
@@ -68,6 +77,9 @@ func cmdInit(args []string) {
 	pin := fs.String("pin", "", "sha256 of the relay certificate")
 	force := fs.Bool("force", false, "replace an existing config (unpairs every phone)")
 	fs.Parse(args)
+	if *relay == "" && *pin == "" {
+		*relay, *pin = defaultRelay, defaultPin
+	}
 	if *relay == "" || len(*pin) != 64 {
 		die("init needs -relay host:port and a 64-hex -pin")
 	}
@@ -106,7 +118,7 @@ func cmdPair(args []string) {
 	codeOnly := fs.Bool("code", false, "print only the pairing code and exit")
 	png := fs.String("png", "", "also write the QR code to this PNG file")
 	fs.Parse(args)
-	c, err := loadConfig()
+	c, err := loadOrDefault()
 	if err != nil {
 		die("%v", err)
 	}
@@ -292,10 +304,25 @@ func cmdStatus() {
 	}
 }
 
-func cmdServe() {
+// loadOrDefault reads the config; a packaged build (brew) sets one up on its
+// default relay the first time.
+func loadOrDefault() (*Config, error) {
 	c, err := loadConfig()
+	if errors.Is(err, os.ErrNotExist) && defaultRelay != "" && len(defaultPin) == 64 {
+		if c, err = newConfig(defaultRelay, defaultPin); err == nil {
+			err = c.save()
+		}
+	}
+	return c, err
+}
+
+func cmdServe() {
+	c, err := loadOrDefault()
 	if err != nil {
 		die("%v", err)
+	}
+	if msg := statuslineEnsure(); msg != "" {
+		logf("%s", msg)
 	}
 	if c.RoomKey == "" { // configs from before the relay checked agents
 		c.RoomKey = randHex(32)

@@ -109,10 +109,69 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		end = len(buf)
 	}
 	items := []ChatItem{}
+	var ctx *chatContext
 	for _, l := range bytes.Split(buf[:end], []byte{'\n'}) {
 		items = append(items, chatItems(l)...)
+		if c := lineContext(l); c != nil {
+			ctx = c
+		}
 	}
-	return map[string]any{"path": filepath.Base(path), "next": from + int64(end), "reset": reset, "items": items}, nil
+	out := map[string]any{"path": filepath.Base(path), "next": from + int64(end), "reset": reset, "items": items}
+	// Claude's status line knows the real window size; the transcript is the
+	// fallback (and is newer when Claude has answered since).
+	if st := readStatus(strings.TrimSuffix(filepath.Base(path), ".jsonl")); st != nil {
+		if used, size := st.ContextWindow.used(); size > 0 {
+			c := &chatContext{Tokens: used, Size: size, Model: st.Model.DisplayName}
+			if ctx != nil && ctx.Tokens != used {
+				c.Tokens = ctx.Tokens
+			}
+			ctx = c
+		}
+	}
+	if ctx != nil {
+		if ctx.Size == 0 {
+			ctx.Size = 200_000
+			if ctx.Tokens > ctx.Size || strings.Contains(ctx.Model, "[1m]") {
+				ctx.Size = 1_000_000
+			}
+		}
+		out["ctx"] = ctx
+	}
+	return out, nil
+}
+
+type chatContext struct {
+	Tokens int64  `json:"tokens"`
+	Size   int64  `json:"size"`
+	Model  string `json:"model,omitempty"`
+}
+
+// lineContext is how full the context window was at an assistant answer:
+// everything the model read for it.
+func lineContext(l []byte) *chatContext {
+	if !bytes.Contains(l, []byte(`"usage"`)) || !bytes.Contains(l, []byte(`"assistant"`)) {
+		return nil
+	}
+	var e struct {
+		Type        string `json:"type"`
+		IsSidechain bool   `json:"isSidechain"`
+		Message     struct {
+			Model string `json:"model"`
+			Usage *struct {
+				Input         int64 `json:"input_tokens"`
+				CacheCreation int64 `json:"cache_creation_input_tokens"`
+				CacheRead     int64 `json:"cache_read_input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(l, &e) != nil || e.Type != "assistant" || e.IsSidechain || e.Message.Usage == nil || e.Message.Model == "<synthetic>" {
+		return nil
+	}
+	u := e.Message.Usage
+	if n := u.Input + u.CacheCreation + u.CacheRead; n > 0 {
+		return &chatContext{Tokens: n, Model: e.Message.Model}
+	}
+	return nil
 }
 
 var (

@@ -144,6 +144,16 @@ func (m *Terms) get(id uint32) *Term {
 	return m.terms[id]
 }
 
+func (m *Terms) all() []*Term {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ts := make([]*Term, 0, len(m.terms))
+	for _, t := range m.terms {
+		ts = append(ts, t)
+	}
+	return ts
+}
+
 func (m *Terms) list() []TermInfo {
 	m.mu.Lock()
 	ts := make([]*Term, 0, len(m.terms))

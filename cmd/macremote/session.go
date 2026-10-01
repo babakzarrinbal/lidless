@@ -593,6 +593,17 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		return chatRead(t, p.From, p.Path)
+	case "chat.sessions":
+		dir, err := resolve(roots, p.Dir)
+		if err != nil {
+			return nil, err
+		}
+		return chatSessions(dir, s.a.terms.all())
+	case "chat.commands":
+		dir, _ := resolve(roots, p.Dir) // outside the shared folders: the user's commands only
+		return chatCommands(dir, p.Kind), nil
+	case "usage":
+		return claudeUsage(), nil
 	case "fs.list":
 		return fsList(roots, p.Path)
 	case "fs.read":

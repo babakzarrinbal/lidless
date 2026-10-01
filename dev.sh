@@ -6,6 +6,8 @@
 #   ./dev.sh agent                 build bin/macremote (darwin/arm64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
 #   ./dev.sh mac-kit               build/MacRemote.zip: agent + install.sh for another Mac
+#   ./dev.sh brew [version]        build/brew/: release tarballs + Homebrew formula (BREW_URL=… where they'll be hosted)
+#   ./dev.sh brew-test             install that formula from a local tap, check it, remove it
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
 #   ./dev.sh relay-pin             print the relay certificate pin
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
@@ -81,6 +83,49 @@ echo; echo "Installed. Scan this code with the Mac Remote app (Pair another Mac)
 EOF
   (cd build && rm -f MacRemote.zip && zip -qr MacRemote.zip MacRemote)
   ls -la build/MacRemote.zip | awk '{print "build/MacRemote.zip", $5, "bytes"}'
+}
+
+cmd_brew() {
+  local v=${1:-$(date +%Y.%m.%d)} out=build/brew pin
+  local url=${BREW_URL:-https://github.com/OWNER/homebrew-macremote/releases/download/v$v}
+  pin=$(cmd_relay-pin)
+  rm -rf "$out" && mkdir -p "$out"
+  local flags="-s -X main.defaultRelay=your.server:$RELAY_PORT -X main.defaultPin=$pin"
+  local arch sha_arm sha_intel
+  for arch in arm64 amd64; do
+    mkdir -p "$out/$arch"
+    quiet "brew-$arch" gorun darwin $arch go build -trimpath -ldflags="$flags" -o "$out/$arch/macremote" ./cmd/macremote
+    tar -C "$out/$arch" -czf "$out/macremote-$v-darwin-$arch.tar.gz" macremote
+  done
+  sha_arm=$(shasum -a 256 "$out/macremote-$v-darwin-arm64.tar.gz" | cut -d' ' -f1)
+  sha_intel=$(shasum -a 256 "$out/macremote-$v-darwin-amd64.tar.gz" | cut -d' ' -f1)
+  python3 - "$v" "$url" "$sha_arm" "$sha_intel" <<'PY' > "$out/macremote.rb"
+import sys
+v, url, arm, intel = sys.argv[1:]
+t = open("packaging/homebrew/macremote.rb.in").read()
+for k, x in {"@VERSION@": v, "@URL_ARM@": f"{url}/macremote-{v}-darwin-arm64.tar.gz", "@SHA_ARM@": arm,
+             "@URL_INTEL@": f"{url}/macremote-{v}-darwin-amd64.tar.gz", "@SHA_INTEL@": intel}.items():
+    assert k in t, k
+    t = t.replace(k, x)
+sys.stdout.write(t)
+PY
+  ls "$out"/*.tar.gz "$out/macremote.rb" | sed 's/^/  /'
+}
+
+cmd_brew-test() { # a throwaway local tap with file:// URLs; leaves nothing behind
+  local tap=macremote/local dir
+  BREW_URL="file://$ROOT/build/brew" cmd_brew test
+  brew tap-new --no-git "$tap" >/dev/null
+  dir=$(brew --repository "$tap")
+  cp build/brew/macremote.rb "$dir/Formula/"
+  local rc=0
+  quiet brew-install brew install "$tap/macremote" || rc=1
+  [ $rc = 0 ] && { quiet brew-formula-test brew test "$tap/macremote" || rc=1; }
+  [ $rc = 0 ] && { "$(brew --prefix)/opt/macremote/bin/macremote" 2>&1 | head -1 | sed 's/^/  /' || true; }
+  brew uninstall --formula "$tap/macremote" >/dev/null 2>&1 || true
+  brew untap "$tap" >/dev/null 2>&1 || true
+  brew developer off >/dev/null 2>&1 || true # tap-new turned it on
+  return $rc
 }
 
 cmd_relay-pin() { ssh "$BOX" docker exec macremote-relay /relay pin; }
