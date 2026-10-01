@@ -8,6 +8,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm/xterm.dart';
 
 import '../net/link.dart';
@@ -29,13 +30,21 @@ class TermTab {
   int next = 0; // next output byte offset we expect
   bool exited = false;
   bool parked = false; // its Claude quit while idle; [Terms.unpark] brings it back
-  int unseen = 0; // output bytes since the session was last on screen
+  int readTo = 0; // output below this offset was on screen
   int replayUntil = 0; // output below this offset was already answered once
+  bool working = false; // the agent is thinking or writing
   bool _replaying = false;
+  bool _fresh = false; // just adopted: its replay is old news
+  bool _hush = false; // quitting on purpose: what it prints is not news
+  bool _told = false; // [Terms.onUnread] was called for this stop
+  DateTime _typed = DateTime(0);
   late final ByteConversionSink _dec;
-  Timer? _resize;
+  Timer? _resize, _settle;
 
   bool get agent => kind != 'shell';
+
+  /// Output bytes the phone has not shown.
+  int get unseen => max(0, next - readTo);
 
   /// The agent wrote more than a cursor blink while its session was not shown.
   bool get unread => agent && unseen > 512;
@@ -86,7 +95,18 @@ class Session {
     final parts = dir.split('/').where((s) => s.isNotEmpty);
     return parts.isEmpty ? '/' : parts.last;
   }
+
+  Activity get activity {
+    final a = agent;
+    if (a == null || a.exited) return Activity.closed;
+    if (a.working) return Activity.working;
+    return a.unread ? Activity.unread : Activity.read;
+  }
 }
+
+/// A session's dot: green working, blinking blue unread (it stopped or asks
+/// something, unseen), white read, gray closed.
+enum Activity { working, unread, read, closed }
 
 class _TermSink implements Sink<String> {
   final Terminal t;
@@ -111,6 +131,15 @@ class Terms extends ChangeNotifier {
   bool ctrl = false, alt = false, cmd = false;
   bool synced = false; // the Mac's list has been read at least once
   String? _viewing; // the session on screen
+  bool _foreground = true; // the app is on screen
+  SharedPreferences? _prefs;
+
+  /// An agent stopped (finished, or asks something) with output not seen;
+  /// [live] is its screen at that moment.
+  void Function(TermTab t, LiveScreen live)? onUnread;
+
+  /// The session came on screen: what it wrote is read.
+  void Function(String session)? onRead;
   int _epoch = 0, _synced = -1; // the link's connection; the one last synced
   bool _syncing = false;
   late final StreamSubscription _sub;
@@ -133,9 +162,46 @@ class Terms extends ChangeNotifier {
   /// The session on screen: what it writes is read.
   set viewing(String? id) {
     if (id == _viewing) return;
+    _seeUpTo(_viewing); // left: read up to here
     _viewing = id;
+    _seeUpTo(id);
+    _saveRead();
+  }
+
+  /// The app went to the background (false) or came back: what the session on
+  /// screen writes meanwhile is news.
+  set foreground(bool on) {
+    if (on == _foreground) return;
+    _seeUpTo(_viewing);
+    _foreground = on;
+    _seeUpTo(_viewing);
+    _saveRead();
+  }
+
+  bool _onScreen(TermTab t) => _foreground && t.session == _viewing;
+
+  void _seeUpTo(String? session) {
+    if (session == null || !_foreground) return;
     for (final t in tabs) {
-      if (t.session == id) t.unseen = 0;
+      if (t.session == session) t.readTo = t.next;
+    }
+    onRead?.call(session);
+  }
+
+  String get _readKey => 'termRead:${link.pairing.room}';
+
+  /// Read offsets survive the app: a Claude that finished while it was closed
+  /// still shows as unread.
+  void _saveRead() {
+    _prefs?.setString(_readKey, jsonEncode({for (final t in tabs) '${t.id}': t.readTo}));
+  }
+
+  Future<Map<String, dynamic>> _loadRead() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      return (jsonDecode(_prefs!.getString(_readKey) ?? '{}') as Map).cast<String, dynamic>();
+    } catch (_) {
+      return const {};
     }
   }
 
@@ -167,6 +233,7 @@ class Terms extends ChangeNotifier {
     _syncing = true;
     try {
       final list = (await link.call('term.list') as List).cast<Map>();
+      final read = synced ? const <String, dynamic>{} : await _loadRead();
       final alive = {for (final m in list) (m['id'] as num).toInt(): m};
       for (final t in tabs) {
         if (!t.exited && !alive.containsKey(t.id)) {
@@ -179,8 +246,13 @@ class Terms extends ChangeNotifier {
         final id = (m['id'] as num).toInt();
         final session = m['session'] as String? ?? '';
         if (known.contains(id) || session.isEmpty) continue; // not one of ours
-        tabs.add(_make(id, m['title'] as String? ?? '',
-            kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? ''));
+        final t = _make(id, m['title'] as String? ?? '',
+            kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? '');
+        // Read up to where the phone last showed it; one never shown is read.
+        final end = (m['end'] as num?)?.toInt() ?? 0;
+        t.readTo = min((read['$id'] as num?)?.toInt() ?? end, end);
+        t._fresh = true;
+        tabs.add(t);
       }
       // Output frames can arrive before the attach reply, so take the replay
       // boundary from the list.
@@ -194,6 +266,8 @@ class Terms extends ChangeNotifier {
       }
       synced = true;
       _synced = _epoch;
+      _seeUpTo(_viewing);
+      _saveRead();
       notifyListeners();
     } catch (_) {
       // Just connected, the Mac is still busy: try again shortly.
@@ -247,12 +321,42 @@ class Terms extends ChangeNotifier {
     // the shell already got answers to: don't answer them twice.
     t._replaying = t.next <= t.replayUntil;
     t._dec.add(d);
-    if (t.agent && !t._replaying && t.session != _viewing) {
-      final was = t.unread;
-      t.unseen += d.length;
-      if (!was && t.unread) notifyListeners();
-    }
     t._replaying = false;
+    // An adopted terminal's replay is old; after a reconnect, what came
+    // meanwhile is news.
+    final old = t._fresh && t.next <= t.replayUntil;
+    if (!old) t._fresh = false;
+    if (_onScreen(t) || t._hush || t.parked) t.readTo = t.next;
+    if (!t.agent || old || t._hush || t.parked) return;
+    // An echo of what was typed is not work.
+    if (!t.working && DateTime.now().difference(t._typed) < const Duration(milliseconds: 400)) return;
+    _busy(t);
+  }
+
+  /// Output keeps an agent working; two quiet seconds with no spinner on its
+  /// screen and it has stopped.
+  void _busy(TermTab t) {
+    t._settle?.cancel();
+    t._settle = Timer(const Duration(seconds: 2), () => _settled(t));
+    if (t.working) return;
+    t.working = true;
+    t._told = false;
+    notifyListeners();
+  }
+
+  void _settled(TermTab t) {
+    if (t.exited || !tabs.contains(t)) return;
+    final live = LiveScreen.of(t.terminal);
+    if (live.status != null && !live.asking) {
+      t._settle = Timer(const Duration(seconds: 2), () => _settled(t));
+      return;
+    }
+    t.working = false;
+    notifyListeners();
+    if (t.unread && !t._told) {
+      t._told = true;
+      onUnread?.call(t, live);
+    }
   }
 
   /// A key pressed in a parked terminal: Home starts its Claude again.
@@ -260,6 +364,7 @@ class Terms extends ChangeNotifier {
 
   void _input(TermTab t, String s) {
     if (t.exited || t._replaying) return;
+    t._typed = DateTime.now();
     if (t.parked) return onWake?.call(t);
     var data = s;
     if (cmd) {
@@ -404,6 +509,7 @@ class Terms extends ChangeNotifier {
       } catch (_) {}
     }
     link.termOut.remove(t.id);
+    t._settle?.cancel();
     final s = session(t.session);
     final i = s?.shells.indexOf(t) ?? -1;
     tabs.remove(t);
@@ -420,10 +526,19 @@ class Terms extends ChangeNotifier {
     if (a == null || a.exited || a.parked || a.kind != 'claude') return null;
     final live = LiveScreen.of(a.terminal);
     if (live.status != null || live.asking) return null; // working, or asking
-    final r = await link.call('term.park', {'id': a.id}, const Duration(seconds: 10));
+    final dynamic r;
+    a._hush = true; // Claude saying goodbye is not news
+    try {
+      r = await link.call('term.park', {'id': a.id}, const Duration(seconds: 10));
+    } finally {
+      a._hush = false;
+      a.readTo = a.next;
+    }
     final conv = r is Map ? r['conversation'] as String? ?? '' : '';
     if (conv.isEmpty) return null;
     a.parked = true;
+    a._settle?.cancel();
+    a.working = false;
     a.note('[Claude quit while you were away, so the laptop or another phone can pick this conversation up. '
         'It starts again when you come back or press a key.]');
     notifyListeners();
@@ -453,6 +568,8 @@ class Terms extends ChangeNotifier {
     for (final t in tabs) {
       if (t.id == id && !t.exited) {
         t.exited = true;
+        t._settle?.cancel();
+        t.working = false;
         t.note('[process exited with code ${p['code']}]');
         notifyListeners();
       }
@@ -469,6 +586,7 @@ class Terms extends ChangeNotifier {
   void type(TermTab? t, String text) {
     if (t == null || t.exited) return;
     if (t.parked) return onWake?.call(t);
+    t._typed = DateTime.now();
     if (!link.sendInput(t.id, utf8.encode(text))) HapticFeedback.heavyImpact();
   }
 
@@ -526,6 +644,11 @@ class Terms extends ChangeNotifier {
 
   @override
   void dispose() {
+    _seeUpTo(_viewing);
+    _saveRead();
+    for (final t in tabs) {
+      t._settle?.cancel();
+    }
     link.removeListener(_onLink);
     _sub.cancel();
     super.dispose();

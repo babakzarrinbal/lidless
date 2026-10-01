@@ -51,6 +51,18 @@ class ChatLog extends ChangeNotifier {
     }
   }
 
+  /// Reads up to the transcript's end (a long one comes in chunks).
+  Future<void> catchUp(Link link, int term) async {
+    for (var i = 0; i < 8; i++) {
+      while (_busy) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      final was = next;
+      await poll(link, term);
+      if (next == was && loaded) return;
+    }
+  }
+
   /// Shows a message sent from the phone at once, until the transcript has
   /// it (as a message or queued). One the transcript never shows as typed (a
   /// / command, say) goes away by itself.

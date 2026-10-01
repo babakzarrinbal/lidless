@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'model/alerts.dart';
 import 'model/terms.dart';
 import 'net/link.dart';
 import 'net/store.dart';
@@ -40,6 +41,7 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
   Link? _attempt; // a pairing in progress
   bool _adding = false; // pairing another Mac
   Terms? _terms;
+  Alerts? _alerts;
   String _name = 'Android phone';
   StreamSubscription? _links;
 
@@ -75,12 +77,15 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
   void _use(MacPairing p) {
     final link = Link(p, p.key, deviceName: _name);
     _link = link;
-    _terms = Terms(link);
+    final terms = _terms = Terms(link);
+    _alerts = Alerts(link, terms);
     link.start();
     Store.setActive(p.room);
   }
 
   void _drop() {
+    _alerts?.dispose();
+    _alerts = null;
     _terms?.dispose();
     _link?.dispose();
     _terms = null;

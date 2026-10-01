@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../model/claude.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
+import '../net/notify.dart';
 import '../net/store.dart';
 import 'agent_extras.dart';
 import 'files_panel.dart';
@@ -60,6 +63,8 @@ class _HomeState extends State<Home> {
     terms.onWake = _wake;
     terms.addListener(_openOnly);
     _openOnly(); // the list may be in already
+    _taps = Notify.taps.listen(_tapped);
+    if (_pendingTap != null) _tapped(_pendingTap!);
     SharedPreferences.getInstance().then((p) {
       if (!mounted) return;
       setState(() {
@@ -96,8 +101,39 @@ class _HomeState extends State<Home> {
     }
   }
 
+  // A tapped notification: its session, on its Mac. Another Mac's waits for
+  // the Home that shows it.
+  static String? _pendingTap;
+  static bool _asked = false;
+  StreamSubscription<String>? _taps;
+
+  void _tapped(String payload) {
+    final i = payload.indexOf('|');
+    if (i < 0) return;
+    final room = payload.substring(0, i), id = payload.substring(i + 1);
+    if (room != link.pairing.room) {
+      final m = widget.macs.where((m) => m.room == room).firstOrNull;
+      if (m == null) return;
+      _pendingTap = payload;
+      widget.onSwitch(m);
+      return;
+    }
+    _pendingTap = null;
+    void go() {
+      if (!mounted || terms.session(id) == null) return;
+      terms.removeListener(go);
+      _select(id);
+    }
+    if (terms.session(id) != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => go());
+    } else {
+      terms.addListener(go); // the Mac's list is not in yet
+    }
+  }
+
   @override
   void dispose() {
+    _taps?.cancel();
     terms.removeListener(_openOnly);
     if (terms.onWake == _wake) terms.onWake = null;
     for (final f in _files.values) {
@@ -107,6 +143,10 @@ class _HomeState extends State<Home> {
   }
 
   void _select(String id) {
+    if (!_asked) {
+      _asked = true;
+      Notify.ask(); // to say when a session needs you
+    }
     final was = _recent ? null : _currentOf(terms.sessions);
     if (was != null && was.id != id) _leave(was);
     final to = terms.session(id);
@@ -629,8 +669,7 @@ class _HomeState extends State<Home> {
       );
 
   Widget _sessionTile(Session s, bool sel) {
-    final live = s.agent != null && !s.agent!.exited;
-    final unread = !sel && (s.agent?.unread ?? false);
+    final act = s.activity;
     final flags = _prefs?.getString('sessFlags.${s.id}') ?? '';
     final shells = s.shells.where((t) => !t.exited).length;
     return Padding(
@@ -653,11 +692,7 @@ class _HomeState extends State<Home> {
                   right: -2,
                   bottom: -2,
                   child: StatusDot(
-                    unread
-                        ? StatusDot.unread
-                        : live
-                            ? StatusDot.active
-                            : StatusDot.idle,
+                    act,
                     size: 9,
                     border: C.panel,
                   ),
@@ -671,7 +706,12 @@ class _HomeState extends State<Home> {
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   Text(
                     [
-                      live ? 'open on the phone' : 'ended',
+                      switch (act) {
+                        Activity.working => 'working',
+                        Activity.unread => 'waiting for you',
+                        Activity.read => 'open on the phone',
+                        Activity.closed => 'ended',
+                      },
                       if (flags.isNotEmpty) flags,
                       if (shells > 0) '$shells shell${shells == 1 ? '' : 's'}',
                     ].join(' · '),
