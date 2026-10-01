@@ -657,24 +657,56 @@ class _HomeState extends State<Home> {
     }
     if (!mounted) return;
     final lid = s['lidAwake'] == true;
+    Future<List<AccountTokens>> reset(AccountTokens a) async {
+      final r = await link.call('tokens.reset', {'tool': a.tool, 'account': a.account}, const Duration(seconds: 30));
+      return [for (final t in r as List) AccountTokens.from(t as Map)];
+    }
+
+    // Each account's tokens sit under its plan; accounts not signed in, below.
+    bool claudes(AccountTokens a) => a.tool == 'claude' && a.account == usage?.email;
+    bool copilots(AccountTokens a) => a.tool == 'copilot' && a.account == usage?.copilot?.login;
+    bool others(AccountTokens a) => !claudes(a) && !copilots(a);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      // Short of the top, so dragging it down never pulls the notifications.
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
       builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 8),
+            child: Row(children: [
+              Expanded(
+                child: Text(s!['host'] ?? link.host,
+                    overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              ),
+              IconButton(tooltip: 'Close', icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+            ]),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (usage != null) ...[
               UsageCard(usage),
+              TokensCard(usage.tokens, keep: claudes, onReset: reset),
               const Divider(height: 28),
-              if (usage.copilot != null) ...[CopilotCard(usage.copilot!), const Divider(height: 28)],
-              TokensCard(usage.tokens, onReset: (a) async {
-                final r = await link.call('tokens.reset', {'tool': a.tool, 'account': a.account}, const Duration(seconds: 30));
-                return [for (final t in r as List) AccountTokens.from(t as Map)];
-              }),
-              const Divider(height: 28),
+              if (usage.copilot != null) ...[
+                CopilotCard(usage.copilot!),
+                TokensCard(usage.tokens, keep: copilots, onReset: reset),
+                const Divider(height: 28),
+              ],
+              if (usage.tokens.any(others)) ...[
+                TokensCard(usage.tokens, keep: others, title: 'Other accounts', onReset: reset),
+                const Text('Copilot\'s tokens count once a Copilot session ends.',
+                    style: TextStyle(fontSize: 11.5, color: C.dim)),
+                const Divider(height: 28),
+              ],
             ],
-            Text(s!['host'] ?? link.host, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const Text('This Mac', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             _row(Icons.battery_charging_full_rounded, 'Battery', s['battery'] ?? '—'),
             _row(Icons.power_rounded, 'Power', s['power'] ?? '—'),
@@ -711,7 +743,9 @@ class _HomeState extends State<Home> {
                 ),
               ),
           ]),
-        ),
+            ),
+          ),
+        ]),
       ),
     );
   }

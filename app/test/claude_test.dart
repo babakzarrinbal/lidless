@@ -56,7 +56,7 @@ void main() {
     AccountTokens? asked;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: TokensCard(u.tokens, onReset: (a) async {
+        body: TokensCard(u.tokens, title: 'Accounts', onReset: (a) async {
           asked = a;
           return [
             AccountTokens.from({'tool': 'claude', 'account': 'a@x.com', 'used': {}, 'all': 120000, 'reset': true, 'since': 1759000000}),
@@ -73,6 +73,28 @@ void main() {
     expect(asked!.account, 'a@x.com');
     expect(find.text('0'), findsOneWidget);
     expect(find.textContaining('all time 120k'), findsOneWidget);
+  });
+
+  testWidgets('under its account, a card keeps to that account', (tester) async {
+    final u = ClaudeUsage.from({
+      'tokens': [
+        {'tool': 'claude', 'account': 'a@x.com', 'current': true, 'total': 120000, 'used': {'in': 120000}, 'all': 120000},
+        {'tool': 'claude', 'account': 'b@x.com', 'total': 3000000, 'used': {'in': 3000000}, 'all': 3000000},
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TokensCard(u.tokens, keep: (a) => a.account == 'a@x.com', onReset: (a) async => u.tokens),
+      ),
+    ));
+    expect(find.text('Tokens used'), findsOneWidget);
+    expect(find.text('120k'), findsOneWidget);
+    expect(find.text('3M'), findsNothing);
+    await tester.tap(find.byTooltip('Reset'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reset'));
+    await tester.pumpAndSettle();
+    expect(find.text('3M'), findsNothing); // still only its account after the reset
   });
 
   test('the transcript carries the context window', () {

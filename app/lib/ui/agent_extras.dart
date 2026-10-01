@@ -379,18 +379,24 @@ class TokenParts extends StatelessWidget {
   }
 }
 
-/// Tokens per account, each with a reset.
+/// Tokens per account, each with a reset: the accounts [keep] picks, under
+/// [title] (none when the card sits under its account, which it then doesn't
+/// repeat).
 class TokensCard extends StatefulWidget {
-  const TokensCard(this.accounts, {super.key, required this.onReset});
+  const TokensCard(this.accounts, {super.key, required this.onReset, this.keep, this.title});
   final List<AccountTokens> accounts;
   final Future<List<AccountTokens>> Function(AccountTokens) onReset;
+  final bool Function(AccountTokens)? keep;
+  final String? title;
 
   @override
   State<TokensCard> createState() => _TokensCardState();
 }
 
 class _TokensCardState extends State<TokensCard> {
-  late var _list = widget.accounts;
+  late var _list = _kept(widget.accounts);
+
+  List<AccountTokens> _kept(List<AccountTokens> l) => [for (final a in l) if (widget.keep?.call(a) ?? true) a];
   final _open = <String>{};
 
   Future<void> _reset(AccountTokens a) async {
@@ -408,7 +414,7 @@ class _TokensCardState extends State<TokensCard> {
     if (ok != true) return;
     try {
       final l = await widget.onReset(a);
-      if (mounted) setState(() => _list = l);
+      if (mounted) setState(() => _list = _kept(l));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
@@ -416,13 +422,16 @@ class _TokensCardState extends State<TokensCard> {
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Tokens used', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+        if (widget.title != null) ...[
+          Text(widget.title!, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+        ],
         if (_list.isEmpty)
-          const Text('Nothing counted yet.', style: TextStyle(fontSize: 13, color: C.dim)),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text('Tokens used: nothing counted yet.', style: TextStyle(fontSize: 13, color: C.dim)),
+          ),
         for (final a in _list) _account(a),
-        const Text('Copilot\'s tokens count once a Copilot session ends.',
-            style: TextStyle(fontSize: 11.5, color: C.dim)),
       ]);
 
   Widget _account(AccountTokens a) {
@@ -442,9 +451,10 @@ class _TokensCardState extends State<TokensCard> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Flexible(
-                    child: Text(a.account, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
+                    child: Text(widget.title == null ? 'Tokens used' : a.account,
+                        overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
                   ),
-                  if (a.current) ...[
+                  if (a.current && widget.title != null) ...[
                     const SizedBox(width: 6),
                     const Text('signed in', style: TextStyle(fontSize: 11, color: C.green)),
                   ],
