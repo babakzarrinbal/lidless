@@ -50,7 +50,7 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
   it runs. If the user is working through the phone (even a Claude session
   driving this very repo), say so and ask before running it.
 - **One agent per Mac.** The agent runs either as a brew service
-  (`homebrew.mxcl.macremote`) or as the LaunchAgent (`org.zarrinbal.macremote`,
+  (`sh.brew.macremote`; older Homebrew: `homebrew.mxcl.macremote`) or as the LaunchAgent (`org.zarrinbal.macremote`,
   from `macremote install` / `agent-install`), never both. Two copies share a
   room and replace each other on the relay every ~2 s, so every phone drops.
   `lock.go` now makes a second copy wait, and `install` refuses next to a brew

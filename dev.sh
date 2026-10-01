@@ -82,7 +82,9 @@ cmd_doctor() { # read-only; prints OK/MISSING per item, never a secret's value
   [ -n "$RELAY_HOST" ] && chk box-ssh "ssh -o BatchMode=yes -o ConnectTimeout=5 $BOX true" "add this Mac's ssh key on the box (docs/dev-setup.md)"
   local la=no bs=no
   launchctl print "gui/$(id -u)/org.zarrinbal.macremote" >/dev/null 2>&1 && la=yes
-  launchctl print "gui/$(id -u)/homebrew.mxcl.macremote" >/dev/null 2>&1 && bs=yes
+  for l in sh.brew.macremote homebrew.mxcl.macremote; do
+    launchctl print "gui/$(id -u)/$l" >/dev/null 2>&1 && bs=yes
+  done
   echo "agent   LaunchAgent=$la brew-service=$bs$([ $la$bs = yesyes ] && echo '  ← TWO copies: keep one (AGENTS.md)')"
   echo "phones  $(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" {printf "%s ", $1}')"
   return $bad

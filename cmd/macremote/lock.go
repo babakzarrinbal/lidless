@@ -9,7 +9,8 @@ import (
 	"syscall"
 )
 
-const brewLabel = "homebrew.mxcl.macremote"
+// Homebrew renamed its service labels from homebrew.mxcl.* to sh.brew.*.
+var brewLabels = []string{"sh.brew.macremote", "homebrew.mxcl.macremote"}
 
 // holdAgentLock makes sure only one agent serves this config. Two copies (a
 // brew service and a `macremote install` LaunchAgent) would share a room and
@@ -40,8 +41,17 @@ func holdAgentLock() {
 var lockFile *os.File
 
 // brewServiceLoaded reports whether `brew services` runs the agent.
-func brewServiceLoaded() bool { return launchctl("print", domain()+"/"+brewLabel) == nil }
+func brewServiceLoaded() bool { return brewServiceLabel() != "" }
+
+func brewServiceLabel() string {
+	for _, l := range brewLabels {
+		if launchctl("print", domain()+"/"+l) == nil {
+			return l
+		}
+	}
+	return ""
+}
 
 func brewServiceHint() string {
-	return fmt.Sprintf("macremote already runs as a brew service (%s); restart it with `brew services restart macremote`", brewLabel)
+	return fmt.Sprintf("macremote already runs as a brew service (%s); restart it with `brew services restart macremote`", brewServiceLabel())
 }
