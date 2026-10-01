@@ -152,4 +152,7 @@ parked. Parked state lives only in the agent's memory.
 - **Deploying the agent:** `./dev.sh agent-install` restarts the agent but
   keeps holder terminals. The one exception is the first switch from a
   pre-holder agent: its terminals lived inside the old agent and end with it,
-  including a Claude driving this repo from a phone.
+  including a Claude driving this repo from a phone. `install` restarts the
+  agent from a detached `macremote reload` (own session, logs to the agent
+  log), so running it from a phone's terminal cannot leave the Mac without an
+  agent.
