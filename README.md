@@ -14,7 +14,8 @@ phone ──WSS──▶ relay (your.server:8460) ◀──WSS── macremote a
 - **Agent** (`cmd/macremote`, LaunchAgent): dials out to the relay, so the Mac
   needs no open port and no setup. Phones are authorized by their Noise static
   key; `macremote pair` issues a one-time token (10 min) as a QR/text code.
-  Shells live in the agent and outlive the phone's connection. The first
+  Each terminal runs in its own holder process, so it outlives the phone's
+  connection and the agent itself, and every device sees the same one. The first
   agent to connect claims its room with its room key; the relay refuses any
   other agent for that room.
 - **App** (`app/`, Flutter): Noise_IK_25519_ChaChaPoly_SHA256 (prologue
@@ -48,6 +49,15 @@ terminal can use another: long-press **+** in the shell tabs, or tap the shell
 button next to **Start** on the New session page. Manage Macs also renames
 (a nickname on the phone) and removes paired Macs.
 
+**One terminal, every device.** A session opened on a phone shows up on the
+other phones within a second, and on the Mac with `macremote ls` and
+`macremote attach <id>` (Ctrl-] leaves it running). A Claude started on the
+Mac with `macremote claude`, or plain `claude` after `macremote shell-setup`,
+shows up on the phones. There is no moving a session: every device is a window
+onto the same terminal. While a laptop window is attached, its size wins.
+`macremote kill <id>` ends one everywhere. How it works:
+[docs/architecture.md](docs/architecture.md).
+
 Copilot is started as `copilot` from a login shell: `~/.local/bin/copilot`
 links to VS Code's Copilot CLI shim.
 
@@ -63,6 +73,8 @@ Working on it: [AGENTS.md](AGENTS.md) (notes for coding agents and humans) and
 - `./dev.sh agent-install` — build the agent, init it against the relay, install
   the LaunchAgent and link `~/.local/bin/macremote`.
 - `macremote pair | devices | revoke <n> | status` — on the Mac.
+- `macremote ls | attach [id] | kill <id> | claude | shell-setup` — shared
+  terminals on the Mac.
 - `./dev.sh install` — release APK onto the phone; `./dev.sh pair-adb` sends a
   pairing link over adb.
 - `./dev.sh relay-deploy` — rebuild and restart the relay on the box (own port

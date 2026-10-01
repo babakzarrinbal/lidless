@@ -577,8 +577,8 @@ func dialHold(id uint32) (net.Conn, holdInfo, error) {
 	if err == nil {
 		err = json.Unmarshal(p, &info)
 	}
-	if err == nil && info.V != holdProto {
-		err = fmt.Errorf("terminal %d speaks protocol %d", id, info.V)
+	if err == nil && (info.V < 1 || info.V > holdProto) { // older ones are still spoken
+		err = fmt.Errorf("terminal %d speaks protocol %d; this macremote knows up to %d", id, info.V, holdProto)
 	}
 	if err != nil {
 		c.Close()

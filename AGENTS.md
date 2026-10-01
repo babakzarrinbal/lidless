@@ -1,7 +1,9 @@
 # Lidless (Mac Remote): working notes for coding agents
 
 CLAUDE.md imports this file. Read README.md for what the product is,
-docs/dev-setup.md to set up a new Mac, and docs/hosting.md for the relay.
+**docs/architecture.md for how it works** (holders, shared terminals, the
+protocols, the traps), docs/dev-setup.md to set up a new Mac, and
+docs/hosting.md for the relay.
 
 **This repo is public.** Never commit the relay's address or IP, its
 certificate pin, keys, or tokens. Those live in untracked files (listed below).
@@ -10,18 +12,19 @@ certificate pin, keys, or tokens. Those live in untracked files (listed below).
 
 | Path | What |
 |---|---|
-| `cmd/macremote/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `term.go`: PTY terminals that outlive the phone. `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `macremote setup`. `main.go`: CLI, LaunchAgent install. |
+| `cmd/macremote/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `hold.go`: the holder process that owns each terminal's pty and serves it on a unix socket (protocol in docs/architecture.md). `term.go`: the agent's side: adopts holders, mirrors their output for phones, sends `{"ev":"terms"}`. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `macremote setup`. `main.go`: CLI, LaunchAgent install. |
 | `cmd/relay/` | Go relay (Docker on the server, port 8460). A dumb pipe: per-IP rate limit (burst 15, 1 per 2 s), 8 phones per room, 10 s accept timeout. Close codes: 4404 Mac offline, 4408 Mac did not answer, 4429 too many, 4001 agent replaced. |
 | `cmd/noisevec/` | Generates `app/test/noise_vectors.json` (`./dev.sh vectors`). |
-| `app/` | Flutter Android app (`org.zarrinbal.macremote`, shown as "Lidless"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
+| `app/` | Flutter Android app (`org.zarrinbal.macremote`, shown as "Lidless"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac, live-synced on `terms` events. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
 | `packaging/homebrew/` | Formula template; `./dev.sh brew` fills it in. Tap: github.com/babakzarrinbal/homebrew-macremote. |
 | `deploy/` | Relay Dockerfile + compose; `deploy/site/` is the landing page's nginx. |
 | `site/` | Landing page (lidless.zarrinbal.org); `site-build` refuses to ship a server address. |
 
 RPC methods (agent `session.go`, about line 540): `term.*` (list, open, attach,
-detach, resize, rename, close, park, unpark), `chat.*` (read, sessions,
-recent, commands, stop), `fs.*`, `shell.list`/`shell.set`, `sys.status`,
-`usage`, `tokens.reset`. A new method needs both sides. The app must handle an
+detach, resize, rename, close; park/unpark only for terminals an old app
+parked), `chat.*` (read, older, sessions, recent, commands, stop), `fs.*`,
+`shell.list`/`shell.set`, `sys.status`, `usage`, `tokens.reset`. Events:
+`terms` (a terminal came or went, on any device), `term.exit`. A new method needs both sides. The app must handle an
 older agent (an `RpcError` with code `unknown`), because Macs update separately
 through brew.
 
@@ -30,10 +33,11 @@ through brew.
 ```bash
 ./dev.sh doctor                 # is this Mac ready to build? (tools, keystore, .server.env, box ssh)
 ./dev.sh go-check               # tidy, fmt, vet (linux+darwin), go test
+./dev.sh go <args…>             # any go command in Docker (go get, go test -run X ./cmd/macremote)
 ./dev.sh app-analyze            # zero issues is the baseline
 ./dev.sh app-test [test/x.dart] # one PASS/FAIL line; full log build/logs/app-test.log
 ./dev.sh agent                  # bin/macremote (darwin/arm64)
-./dev.sh agent-install          # build + install as this Mac's LaunchAgent (RESTARTS the agent)
+./dev.sh agent-install          # build + install as this Mac's LaunchAgent (restarts the agent; terminals survive)
 ./dev.sh apk | install | run    # release APK; install onto the Samsung (ANDROID_SERIAL overrides)
 ./dev.sh log                    # agent log tail (~/Library/Logs/macremote.log)
 ```
@@ -46,9 +50,13 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
 - **Ask first** before anything that publishes: `git push`, `brew-publish`,
   `relay-deploy`, `site-deploy`, `site-dns`. Small local commits after each
   finished step are fine.
-- **`agent-install` restarts this Mac's agent**, and that kills every terminal
-  it runs. If the user is working through the phone (even a Claude session
-  driving this very repo), say so and ask before running it.
+- **`agent-install` restarts this Mac's agent.** Terminals live in holder
+  processes and survive it; phones reconnect within seconds. The exception is
+  the first switch from a pre-holder agent (before 2026-10-01): its terminals
+  end with it. Check your own ancestry (`ps -o ppid=` up the chain) before you
+  restart an agent you may be running inside.
+- **Holders outlive upgrades**: keep the holder protocol backward compatible
+  (docs/architecture.md, "Holder protocol").
 - **One agent per Mac.** The agent runs either as a brew service
   (`sh.brew.macremote`; older Homebrew: `homebrew.mxcl.macremote`) or as the LaunchAgent (`org.zarrinbal.macremote`,
   from `macremote install` / `agent-install`), never both. Two copies share a
