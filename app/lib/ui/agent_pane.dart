@@ -222,8 +222,9 @@ class AgentPaneState extends State<AgentPane> {
             }),
         ]),
       ),
-      KeyBar(keys: [
-        if (!_chat) TypingKey(surface: _surface),
+      // The chat needs no keyboard keys (Stop and the answers are in it); the terminal does.
+      if (!_chat) KeyBar(keys: [
+        TypingKey(surface: _surface),
         TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
         TKey(label: '⇧tab', onTap: () => terms.type(t, '\x1b[Z')),
         ...arrowKeys(terms, t),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:xterm/xterm.dart' show TerminalKey;
 
 import '../model/chat.dart';
 import '../model/terms.dart';
@@ -119,7 +120,7 @@ class _ChatViewState extends State<ChatView> {
     // never jumps as answers, tool rows and the working line come and go.
     final tail = <(Key, Widget)>[
       if (live.asking) (const ValueKey('ask'), _Ask(terms: widget.terms, tab: widget.tab, live: live)),
-      if (live.status != null) (const ValueKey('working'), _Working(_live)),
+      if (live.status != null) (const ValueKey('working'), _Working(_live, onStop: () => widget.terms.key(widget.tab, TerminalKey.escape))),
       for (final q in queued.reversed)
         (ValueKey('q:$q'), Padding(padding: const EdgeInsets.only(top: 10), child: _User(q, queued: true, sending: log.sending(q)))),
     ];
@@ -491,8 +492,9 @@ class _Note extends StatelessWidget {
 /// Claude's working line, the way the terminal shows it: a turning glyph and
 /// its word ("Pondering…") with a light running over it, then time and tokens.
 class _Working extends StatefulWidget {
-  const _Working(this.live);
+  const _Working(this.live, {required this.onStop});
   final ValueListenable<LiveScreen> live;
+  final VoidCallback onStop; // esc: Claude stops what it is doing
 
   @override
   State<_Working> createState() => _WorkingState();
@@ -548,6 +550,19 @@ class _WorkingState extends State<_Working> with SingleTickerProviderStateMixin 
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+            ),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: C.dim,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                widget.onStop();
+              },
+              icon: const Icon(Icons.stop_circle_outlined, size: 17),
+              label: const Text('Stop', style: TextStyle(fontSize: 12.5)),
             ),
           ]);
         },
