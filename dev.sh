@@ -45,12 +45,13 @@ samsung() {
   local s; s=$(adb devices 2>/dev/null | awk '/^192\.168\.2\.118:[0-9]+\tdevice/ {print $1; exit}')
   if [ -z "$s" ] && command -v adb >/dev/null; then
     for p in $(adb mdns services 2>/dev/null | awk '/_adb-tls-connect.*192\.168\.2\.118:/ {print $NF}'); do
-      adb connect "$p" 2>/dev/null | grep -q '^connected' && { s=$p; break; }
+      # a stale mDNS port makes adb connect hang forever
+      perl -e 'alarm 5; exec @ARGV' adb connect "$p" 2>/dev/null | grep -q '^connected' && { s=$p; break; }
     done
   fi
   echo "$s"
 }
-export ANDROID_SERIAL=${ANDROID_SERIAL:-$(samsung)}
+need_phone() { export ANDROID_SERIAL=${ANDROID_SERIAL:-$(samsung)}; }
 APP_ID=org.zarrinbal.macremote
 LOGS=$ROOT/build/logs
 mkdir -p "$LOGS" bin
@@ -275,6 +276,7 @@ cmd_apk() {
 }
 
 cmd_install() {
+  need_phone
   cmd_apk
   adb install -r app/build/app/outputs/flutter-apk/app-release.apk | tail -1
 }
@@ -287,6 +289,7 @@ cmd_run() {
 }
 
 cmd_pair-adb() {
+  need_phone
   local code; code=$(bin/macremote pair -code)
   adb shell am start -a android.intent.action.VIEW -d "macremote://pair/$code" $APP_ID >/dev/null
   echo "pairing link sent to $ANDROID_SERIAL (valid 10 min); confirm on the phone"
