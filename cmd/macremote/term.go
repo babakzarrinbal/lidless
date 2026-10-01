@@ -89,6 +89,20 @@ func (t *Term) frame(typ byte, p []byte) {
 	}
 }
 
+// enterGap keeps a phone's Enter apart from the text before it. The phone
+// sends them 120 ms apart, but the relay can deliver both at once, and a busy
+// Claude then reads one chunk and takes the Enter as part of a paste: the
+// message stays in its input box instead of being sent or queued.
+const enterGap = 250 * time.Millisecond
+
+// enterDelay is how long to hold input p back, sent [since] after the last.
+func enterDelay(p []byte, since time.Duration) time.Duration {
+	if string(p) != "\r" || since >= enterGap {
+		return 0
+	}
+	return enterGap - since
+}
+
 // write queues input for the shell. A program that is not reading its input
 // must not stall the phone's whole connection, so the holder gets it on the
 // terminal's own goroutine.
@@ -297,9 +311,14 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 	m.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
+		var typed time.Time // the last input sent
 		for {
 			select {
 			case f := <-t.send:
+				if f[0] == 'i' {
+					time.Sleep(enterDelay(f[5:], time.Since(typed)))
+					typed = time.Now()
+				}
 				c.SetWriteDeadline(time.Now().Add(30 * time.Second))
 				if _, err := c.Write(f); err != nil {
 					c.Close()

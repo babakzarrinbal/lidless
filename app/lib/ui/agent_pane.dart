@@ -127,13 +127,10 @@ class AgentPaneState extends State<AgentPane> {
       terms.type(t, '\r');
       return;
     }
-    // Bracketed paste keeps a multi-line message as one message; Enter goes
-    // separately so Claude sees it as "submit", not as part of the text.
-    if (text.contains('\n')) {
-      terms.paste(t, text);
-    } else {
-      terms.type(t, text);
-    }
+    // A bracketed paste marks where the text ends (and keeps a multi-line
+    // message as one), so the Enter after it is "submit" even when a busy
+    // Claude reads both at once. Enter goes separately; the agent keeps a gap.
+    terms.paste(t, text);
     Future.delayed(Duration(milliseconds: text.length > 2000 ? 300 : 120), () => terms.type(t, '\r'));
     if (_chat) t.chat.sent(text);
     _input.clear();
