@@ -70,13 +70,21 @@ func copilotRunning() map[string]int {
 // the Mac runs out of processes.
 func copilotBin(shell string) (string, error) {
 	out, _ := exec.Command(shell, "-l", "-c", "which -a copilot").Output()
+	// A login zsh skips .zshrc, where many Macs put Homebrew on PATH.
+	paths := strings.Split(string(out), "\n")
+	for _, d := range append(filepath.SplitList(os.Getenv("PATH")), "/opt/homebrew/bin", "/usr/local/bin") {
+		paths = append(paths, filepath.Join(d, "copilot"))
+	}
 	shims := 0
-	for _, p := range strings.Split(string(out), "\n") {
+	for _, p := range paths {
 		if p = strings.TrimSpace(p); !filepath.IsAbs(p) {
 			continue
 		}
 		real, err := filepath.EvalSymlinks(p)
 		if err != nil {
+			continue
+		}
+		if st, err := os.Stat(real); err != nil || st.IsDir() || st.Mode()&0o111 == 0 {
 			continue
 		}
 		if copilotShim(real) {

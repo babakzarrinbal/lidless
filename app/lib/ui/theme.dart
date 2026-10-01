@@ -135,3 +135,9 @@ void toast(BuildContext context, String msg, {bool error = false}) {
 }
 
 String shellQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
+
+IconData toolIcon(String tool) => switch (tool) {
+      'copilot' => Icons.flight_rounded,
+      'cli' => Icons.terminal_rounded,
+      _ => Icons.auto_awesome_rounded,
+    };

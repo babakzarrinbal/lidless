@@ -39,6 +39,7 @@ class _NewSessionPageState extends State<NewSessionPage> {
   Link get link => widget.terms.link;
   String get _mac => macKey(link);
   String _flagsKey(String dir) => 'flags:$_mac:$_tool:$dir';
+  String _toolKey(String dir) => 'tool:$_mac:$dir';
 
   @override
   void initState() {
@@ -90,7 +91,10 @@ class _NewSessionPageState extends State<NewSessionPage> {
       setState(() {
         _cwd = r['path'] as String;
         _dirs = entries;
-        if (!_flagsTouched) _flags.text = _prefs?.getString(_flagsKey(_cwd!)) ?? '';
+        if (!_flagsTouched) {
+          _tool = _prefs?.getString(_toolKey(_cwd!)) ?? _prefs?.getString('tool') ?? _tool;
+          _flags.text = _prefs?.getString(_flagsKey(_cwd!)) ?? '';
+        }
       });
     } on RpcError catch (e) {
       if (!mounted) return;
@@ -144,6 +148,7 @@ class _NewSessionPageState extends State<NewSessionPage> {
         await p.setString(_flagsKey(dir), flags);
         await p.setString('sessFlags.$id', flags);
         await p.setString('tool', _tool);
+        await p.setString(_toolKey(dir), _tool);
       }
       HapticFeedback.mediumImpact();
       if (mounted) Navigator.pop(context, id);
@@ -240,6 +245,8 @@ class _NewSessionPageState extends State<NewSessionPage> {
             _tool = v.first;
             _flagsTouched = false;
             final cwd = _cwd;
+            // Kept even if the start fails, so the folder's choice sticks.
+            if (cwd != null) _prefs?.setString(_toolKey(cwd), _tool);
             _flags.text = cwd == null ? '' : _prefs?.getString(_flagsKey(cwd)) ?? '';
           }),
         ),
