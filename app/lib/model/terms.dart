@@ -1,7 +1,10 @@
-// Terminal tabs. The shells live on the Mac and outlive the connection: each
-// tab remembers the byte offset it has seen and resumes from there.
+// Terminals, grouped into Claude sessions. The shells live on the Mac and
+// outlive the connection: each tab remembers the byte offset it has seen and
+// resumes from there. A session is one folder with one Claude terminal and
+// any number of plain shells, all tagged with the session id on the Mac.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -10,12 +13,14 @@ import 'package:xterm/xterm.dart';
 import '../net/link.dart';
 
 class TermTab {
-  TermTab(this.id, this.title) {
+  TermTab(this.id, this.title, {required this.kind, required this.session, required this.dir}) {
     _dec = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(_TermSink(terminal));
   }
 
   final int id;
+  final String kind; // the session's agent ('claude', 'copilot') or 'shell'
+  final String session, dir;
   String title;
   final terminal = Terminal(maxLines: 10000);
   final controller = TerminalController();
@@ -26,7 +31,30 @@ class TermTab {
   late final ByteConversionSink _dec;
   Timer? _resize;
 
+  bool get agent => kind != 'shell';
+
   void note(String s) => terminal.write('\r\n\x1b[2m$s\x1b[0m\r\n');
+}
+
+/// The coding agents a session can run, by terminal kind.
+/// 'cli' is a plain shell as the main window.
+const tools = {'claude': 'Claude', 'copilot': 'Copilot', 'cli': 'Terminal'};
+
+/// A view over the terminals that share a session id: one agent terminal
+/// (Claude Code or Copilot) and any number of shells.
+class Session {
+  Session(this.id, this.dir);
+  final String id, dir;
+  TermTab? agent;
+  final shells = <TermTab>[];
+
+  String get tool => agent?.kind ?? 'claude';
+  String get toolName => tools[tool] ?? tool;
+
+  String get name {
+    final parts = dir.split('/').where((s) => s.isNotEmpty);
+    return parts.isEmpty ? '/' : parts.last;
+  }
 }
 
 class _TermSink implements Sink<String> {
@@ -47,13 +75,42 @@ class Terms extends ChangeNotifier {
 
   final Link link;
   final tabs = <TermTab>[];
-  int active = 0;
+  final _activeShell = <String, int>{}; // session id -> shell tab index
   bool ctrl = false, alt = false; // one-shot modifiers from the key bar
+  bool synced = false; // the Mac's list has been read at least once
   int _epoch = 0;
   bool _syncing = false;
   late final StreamSubscription _sub;
 
-  TermTab? get current => tabs.isEmpty ? null : tabs[active.clamp(0, tabs.length - 1)];
+  /// Sessions in the order they were started.
+  List<Session> get sessions {
+    final m = <String, Session>{};
+    for (final t in tabs) {
+      final s = m.putIfAbsent(t.session, () => Session(t.session, t.dir));
+      if (t.agent) {
+        // A restarted agent replaces the one that ended.
+        if (s.agent == null || s.agent!.exited) s.agent = t;
+      } else {
+        s.shells.add(t);
+      }
+    }
+    return m.values.toList();
+  }
+
+  Session? session(String id) {
+    for (final s in sessions) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
+  TermTab? activeShell(Session s) =>
+      s.shells.isEmpty ? null : s.shells[(_activeShell[s.id] ?? 0).clamp(0, s.shells.length - 1)];
+
+  void selectShell(Session s, TermTab t) {
+    _activeShell[s.id] = s.shells.indexOf(t);
+    notifyListeners();
+  }
 
   void _onLink() {
     if (link.online && link.epoch != _epoch) {
@@ -78,7 +135,10 @@ class Terms extends ChangeNotifier {
       final known = {for (final t in tabs) t.id};
       for (final m in list) {
         final id = (m['id'] as num).toInt();
-        if (!known.contains(id)) tabs.add(_make(id, m['title'] as String? ?? ''));
+        final session = m['session'] as String? ?? '';
+        if (known.contains(id) || session.isEmpty) continue; // not one of ours
+        tabs.add(_make(id, m['title'] as String? ?? '',
+            kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? ''));
       }
       // Output frames can arrive before the attach reply, so take the replay
       // boundary from the list.
@@ -86,13 +146,10 @@ class Terms extends ChangeNotifier {
         final end = alive[t.id]?['end'];
         if (end is num) t.replayUntil = end.toInt();
       }
-      if (tabs.isEmpty) {
-        await open();
-      } else {
-        for (final t in tabs) {
-          if (!t.exited) _attach(t);
-        }
+      for (final t in tabs) {
+        if (!t.exited) _attach(t);
       }
+      synced = true;
       notifyListeners();
     } catch (_) {
       // the next reconnect retries
@@ -101,8 +158,9 @@ class Terms extends ChangeNotifier {
     }
   }
 
-  TermTab _make(int id, String title) {
-    final t = TermTab(id, title.isEmpty ? 'shell' : title);
+  TermTab _make(int id, String title,
+      {required String kind, required String session, required String dir}) {
+    final t = TermTab(id, title.isEmpty ? kind : title, kind: kind, session: session, dir: dir);
     t.terminal.onOutput = (s) => _input(t, s);
     t.terminal.onTitleChange = (s) {
       final title = s.trim();
@@ -182,23 +240,54 @@ class Terms extends ChangeNotifier {
     }
   }
 
-  Future<void> open({String? dir}) async {
-    final cur = current?.terminal;
+  /// Opens a terminal on the Mac. [cmd] is typed into the new shell first.
+  Future<TermTab> open({
+    required String session,
+    required String dir,
+    String kind = 'shell',
+    String? cmd,
+    TermTab? sizeLike,
+  }) async {
+    final like = sizeLike?.terminal;
     final info = await link.call('term.open', {
-      'dir': ?dir,
-      'cols': cur?.viewWidth ?? 80,
-      'rows': cur?.viewHeight ?? 24,
+      'dir': dir,
+      'kind': kind,
+      'session': session,
+      'cmd': ?cmd,
+      'cols': like?.viewWidth ?? 80,
+      'rows': like?.viewHeight ?? 24,
     }) as Map;
-    final t = _make((info['id'] as num).toInt(), '');
+    final t = _make((info['id'] as num).toInt(), info['title'] as String? ?? '',
+        kind: kind, session: session, dir: info['dir'] as String? ?? dir);
     tabs.add(t);
-    active = tabs.length - 1;
+    if (kind == 'shell') {
+      _activeShell[session] = tabs.where((x) => x.session == session && !x.agent).length - 1;
+    }
     notifyListeners();
     await _attach(t);
+    return t;
   }
 
-  void select(int i) {
-    active = i;
-    notifyListeners();
+  /// Starts a new session: [tool] (a key of [tools]) in [dir] with [flags].
+  Future<String> start(String dir, String flags, {String tool = 'claude'}) async {
+    final r = Random.secure();
+    final id = List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+    await open(session: id, dir: dir, kind: tool, cmd: command(tool, flags));
+    return id;
+  }
+
+  /// What to type into the session's first shell; null for a plain shell.
+  static String? command(String tool, String flags) {
+    if (tool == 'cli') return flags.trim().isEmpty ? null : flags.trim();
+    return flags.trim().isEmpty ? tool : '$tool ${flags.trim()}';
+  }
+
+  /// Ends every terminal of a session.
+  Future<void> closeSession(String id) async {
+    for (final t in tabs.where((t) => t.session == id).toList()) {
+      await close(t);
+    }
+    _activeShell.remove(id);
   }
 
   Future<void> close(TermTab t) async {
@@ -208,9 +297,11 @@ class Terms extends ChangeNotifier {
       } catch (_) {}
     }
     link.termOut.remove(t.id);
-    final i = tabs.indexOf(t);
+    final s = session(t.session);
+    final i = s?.shells.indexOf(t) ?? -1;
     tabs.remove(t);
-    if (active >= i && active > 0) active--;
+    final a = _activeShell[t.session];
+    if (i >= 0 && a != null && a >= i && a > 0) _activeShell[t.session] = a - 1;
     notifyListeners();
   }
 
@@ -233,16 +324,14 @@ class Terms extends ChangeNotifier {
     }
   }
 
-  /// Types text into the active terminal as if pasted (bracketed paste aware).
-  void paste(String text) {
-    final t = current;
+  /// Types text into [t] as if pasted (bracketed paste aware).
+  void paste(TermTab? t, String text) {
     if (t == null || t.exited) return;
     t.terminal.paste(text);
   }
 
   /// Sends text raw, e.g. a command composed in the editor sheet.
-  void type(String text) {
-    final t = current;
+  void type(TermTab? t, String text) {
     if (t == null || t.exited) return;
     if (!link.sendInput(t.id, utf8.encode(text))) HapticFeedback.heavyImpact();
   }
@@ -257,15 +346,14 @@ class Terms extends ChangeNotifier {
     notifyListeners();
   }
 
-  void key(TerminalKey k) {
-    final t = current;
+  void key(TermTab? t, TerminalKey k, {bool shift = false}) {
     if (t == null) return;
     final c = ctrl, a = alt;
     if (c || a) {
       ctrl = alt = false;
       notifyListeners();
     }
-    t.terminal.keyInput(k, ctrl: c, alt: a);
+    t.terminal.keyInput(k, ctrl: c, alt: a, shift: shift);
   }
 
   @override

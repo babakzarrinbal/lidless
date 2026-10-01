@@ -27,18 +27,19 @@ String parentOf(String p) {
 }
 
 /// The files panel: a folder browser that turns into the editor when a file
-/// is open. The header (breadcrumbs) is built by [FilesHeader] from the same
-/// controller so it can sit in the panel's title bar.
+/// is open. Each session has its own, starting in the session's folder. The
+/// breadcrumbs are built from the same controller for the pane's title bar.
 class Files extends ChangeNotifier {
-  Files(this.link) {
+  Files(this.link, {required this.root}) {
     link.addListener(_onLink);
     _onLink();
   }
 
   final Link link;
+  final String root;
   String? cwd;
   List<Entry> entries = [];
-  bool loading = false, truncated = false, showHidden = false;
+  bool loading = false, truncated = false, showHidden = true;
   String? error;
   String? openPath; // file in the editor
   GlobalKey<EditorViewState> editorKey = GlobalKey();
@@ -50,8 +51,8 @@ class Files extends ChangeNotifier {
     _epoch = link.epoch;
     if (first) {
       SharedPreferences.getInstance().then((p) {
-        showHidden = p.getBool('showHidden') ?? false;
-        go(p.getString('cwd') ?? link.home);
+        showHidden = p.getBool('hiddenFiles') ?? true;
+        go(root);
       });
     } else if (cwd != null) {
       refresh();
@@ -67,9 +68,8 @@ class Files extends ChangeNotifier {
       cwd = r['path'] as String;
       truncated = r['truncated'] == true;
       entries = (r['entries'] as List? ?? []).map((m) => Entry(m as Map)).toList();
-      SharedPreferences.getInstance().then((p) => p.setString('cwd', cwd!));
     } on RpcError catch (e) {
-      if (cwd == null && path != link.home) return go(link.home);
+      if (cwd == null && path != root && path != link.home) return go(link.home);
       error = e.message;
     } finally {
       loading = false;
@@ -85,7 +85,7 @@ class Files extends ChangeNotifier {
 
   void toggleHidden() {
     showHidden = !showHidden;
-    SharedPreferences.getInstance().then((p) => p.setBool('showHidden', showHidden));
+    SharedPreferences.getInstance().then((p) => p.setBool('hiddenFiles', showHidden));
     notifyListeners();
   }
 
@@ -234,10 +234,10 @@ class FilesPanel extends StatelessWidget {
             onPressed: files.cwd == '/' ? null : files.up,
           ),
           IconButton(
-            tooltip: 'Home',
+            tooltip: 'Session folder',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.home_rounded, size: 20),
-            onPressed: () => files.go(link.home),
+            icon: const Icon(Icons.folder_special_rounded, size: 20),
+            onPressed: () => files.go(files.root),
           ),
           const Spacer(),
           if (files.loading)

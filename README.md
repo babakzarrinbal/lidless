@@ -14,10 +14,29 @@ phone ──WSS──▶ relay (your.server:8460) ◀──WSS── macremote a
 - **Agent** (`cmd/macremote`, LaunchAgent): dials out to the relay, so the Mac
   needs no open port and no setup. Phones are authorized by their Noise static
   key; `macremote pair` issues a one-time token (10 min) as a QR/text code.
-  Shells live in the agent and outlive the phone's connection.
+  Shells live in the agent and outlive the phone's connection. The first
+  agent to connect claims its room with its room key; the relay refuses any
+  other agent for that room.
 - **App** (`app/`, Flutter): Noise_IK_25519_ChaChaPoly_SHA256 (prologue
   `macremote/1`, tested against flynn/noise vectors), xterm terminal tabs,
   file browser and code editor (re_editor), biometric lock.
+
+## Sessions
+
+The app's main screen is one session: a folder on the Mac running Claude Code,
+Copilot or a plain terminal (chosen with its flags on the New session page).
+That agent fills the top; below it are a collapsible shell pane (any number of
+shell tabs in the same folder) and a collapsible files pane that opens at the
+session folder (hidden files shown; it can go above it). Drag a pane's header
+to resize it. The keyboard comes up only from the ⌨ key or the agent's input
+bar, and while it is up only the focused pane shows. The drawer lists the
+sessions on the Mac and the paired Macs: each Mac has its own phone key, one is
+connected at a time, and terminals keep running on a Mac while another is open.
+All of a session's terminals carry its id on the Mac (`term.open` `session`,
+`kind`), so the list survives the app being closed.
+
+Copilot is started as `copilot` from a login shell: `~/.local/bin/copilot`
+links to VS Code's Copilot CLI shim.
 
 Wire format, framing and RPC methods: the header of `cmd/macremote/session.go`
 and `app/lib/net/link.dart`.

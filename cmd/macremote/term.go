@@ -22,7 +22,7 @@ const ringKeep = 1 << 20
 type Term struct {
 	ID      uint32
 	Created time.Time
-	Kind    string // "claude" or "shell"; the phone groups terminals by Session
+	Kind    string // the agent ("claude", "copilot") or "shell"; the phone groups terminals by Session
 	Session string
 	Dir     string
 

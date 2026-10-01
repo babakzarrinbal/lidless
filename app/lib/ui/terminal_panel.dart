@@ -7,72 +7,72 @@ import 'package:xterm/xterm.dart';
 import '../model/terms.dart';
 import 'theme.dart';
 
-/// Tabs strip for the terminal panel header.
+/// Tabs strip for a session's shells, for the shell pane's header.
 class TermTabs extends StatelessWidget {
-  const TermTabs({super.key, required this.terms});
+  const TermTabs({super.key, required this.terms, required this.session, required this.onNew});
   final Terms terms;
+  final Session session;
+  final VoidCallback onNew;
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: terms,
-      builder: (context, _) => Row(children: [
-        Expanded(
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            itemCount: terms.tabs.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 6),
-            itemBuilder: (context, i) {
-              final t = terms.tabs[i];
-              final sel = i == terms.active;
-              return GestureDetector(
-                onTap: () => terms.select(i),
-                onLongPress: () => _tabMenu(context, t),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: sel ? C.accent.withValues(alpha: .16) : C.raised,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: sel ? C.accent.withValues(alpha: .5) : Colors.transparent),
+    final shells = session.shells;
+    final cur = terms.activeShell(session);
+    return Row(children: [
+      Expanded(
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          itemCount: shells.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
+          itemBuilder: (context, i) {
+            final t = shells[i];
+            final sel = t == cur;
+            return GestureDetector(
+              onTap: () => terms.selectShell(session, t),
+              onLongPress: () => _tabMenu(context, t),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: sel ? C.accent.withValues(alpha: .16) : C.raised,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: sel ? C.accent.withValues(alpha: .5) : Colors.transparent),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(
+                    t.exited ? Icons.stop_circle_outlined : Icons.circle,
+                    size: t.exited ? 12 : 7,
+                    color: t.exited ? C.dim : C.green,
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(
-                      t.exited ? Icons.stop_circle_outlined : Icons.circle,
-                      size: t.exited ? 12 : 7,
-                      color: t.exited ? C.dim : C.green,
-                    ),
-                    const SizedBox(width: 6),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 130),
-                      child: Text(
-                        t.title,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: sel ? C.text : C.dim,
-                          fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                        ),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 130),
+                    child: Text(
+                      t.title,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: sel ? C.text : C.dim,
+                        fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
-                  ]),
-                ),
-              );
-            },
-          ),
+                  ),
+                ]),
+              ),
+            );
+          },
         ),
-        IconButton(
-          tooltip: 'New terminal',
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.add_rounded, size: 22),
-          onPressed: () => terms.open().catchError(
-              (e) => context.mounted ? toast(context, '$e', error: true) : null),
-        ),
-      ]),
-    );
+      ),
+      IconButton(
+        tooltip: 'New shell',
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.add_rounded, size: 22),
+        onPressed: onNew,
+      ),
+    ]);
   }
 
   Future<void> _tabMenu(BuildContext context, TermTab t) async {
@@ -120,61 +120,82 @@ class TermTabs extends StatelessWidget {
   }
 }
 
-class TerminalPanel extends StatefulWidget {
-  const TerminalPanel({
+/// One terminal on screen. It is read-only (a tap selects and scrolls but
+/// never opens the keyboard) until [TermSurfaceState.toggleKeyboard] turns
+/// typing on; hiding the keyboard turns it off again.
+class TermSurface extends StatefulWidget {
+  const TermSurface({
     super.key,
-    required this.terms,
+    required this.tab,
     required this.fontSize,
     required this.onFocus,
+    this.empty = '',
   });
-  final Terms terms;
+  final TermTab? tab;
   final double fontSize;
   final VoidCallback onFocus;
+  final String empty;
 
   @override
-  State<TerminalPanel> createState() => TerminalPanelState();
+  State<TermSurface> createState() => TermSurfaceState();
 }
 
-class TerminalPanelState extends State<TerminalPanel> {
+class TermSurfaceState extends State<TermSurface> with WidgetsBindingObserver {
   final _view = GlobalKey<TerminalViewState>();
   final _focus = FocusNode();
-  String _draft = '';
+  final typing = ValueNotifier(false);
+  bool _kbSeen = false; // the keyboard has shown since typing turned on
 
-  Terms get terms => widget.terms;
+  bool get _typing => typing.value;
+  set _typing(bool v) {
+    if (typing.value == v) return;
+    typing.value = v;
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _focus.addListener(() {
-      if (_focus.hasFocus) widget.onFocus();
+      if (_focus.hasFocus) {
+        widget.onFocus();
+      } else {
+        _typing = false;
+      }
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focus.dispose();
+    typing.dispose();
     super.dispose();
   }
 
-  void showKeyboard() => _view.currentState?.requestKeyboard();
-
-  void _toggleKeyboard() {
-    if (_focus.hasFocus && MediaQuery.viewInsetsOf(context).bottom > 0) {
-      _view.currentState?.closeKeyboard();
-      _focus.unfocus();
-    } else {
-      showKeyboard();
+  @override
+  void didChangeMetrics() {
+    if (!_typing || !mounted) return;
+    final up = View.of(context).viewInsets.bottom > 0;
+    if (up) {
+      _kbSeen = true;
+    } else if (_kbSeen) {
+      // Keyboard dismissed (back gesture): back to read-only.
+      _typing = false;
     }
   }
 
-  Future<void> _paste() async {
-    final d = await Clipboard.getData(Clipboard.kTextPlain);
-    final s = d?.text;
-    if (s == null || s.isEmpty) {
-      if (mounted) toast(context, 'Clipboard is empty');
+  void toggleKeyboard() {
+    if (_typing) {
+      _view.currentState?.closeKeyboard();
+      _focus.unfocus();
+      _typing = false;
       return;
     }
-    terms.paste(s);
+    _kbSeen = false;
+    _typing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _view.currentState?.requestKeyboard());
   }
 
   void _copy(TermTab t) {
@@ -192,63 +213,73 @@ class TerminalPanelState extends State<TerminalPanel> {
     toast(context, 'Copied ${text.length} characters');
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.tab;
+    if (t == null) {
+      return Center(child: Text(widget.empty, style: const TextStyle(color: C.dim)));
+    }
+    return Stack(children: [
+      Positioned.fill(
+        child: TerminalView(
+          t.terminal,
+          key: _view,
+          controller: t.controller,
+          focusNode: _focus,
+          theme: termTheme,
+          textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: mono),
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+          deleteDetection: true,
+          cursorType: TerminalCursorType.block,
+          readOnly: t.exited || !_typing,
+        ),
+      ),
+      Positioned(
+        top: 6,
+        right: 8,
+        child: ListenableBuilder(
+          listenable: t.controller,
+          builder: (context, _) => t.controller.selection == null
+              ? const SizedBox.shrink()
+              : _CopyChip(onCopy: () => _copy(t), onCancel: t.controller.clearSelection),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// A session's shell pane body: the active shell tab plus its key bar.
+class ShellPanel extends StatefulWidget {
+  const ShellPanel({
+    super.key,
+    required this.terms,
+    required this.session,
+    required this.fontSize,
+    required this.onFocus,
+  });
+  final Terms terms;
+  final Session session;
+  final double fontSize;
+  final VoidCallback onFocus;
+
+  @override
+  State<ShellPanel> createState() => ShellPanelState();
+}
+
+class ShellPanelState extends State<ShellPanel> {
+  final _surface = GlobalKey<TermSurfaceState>();
+  String _draft = '';
+
+  Terms get terms => widget.terms;
+  TermTab? get tab => terms.activeShell(widget.session);
+
+  void showKeyboard() {
+    if (_surface.currentState?.typing.value == false) _surface.currentState?.toggleKeyboard();
+  }
+
   Future<void> _compose() async {
     final c = TextEditingController(text: _draft);
-    final r = await showModalBottomSheet<(String, bool)>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            16, 0, 16, 12 + MediaQuery.viewInsetsOf(context).bottom),
-        child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Command',
-                  style: TextStyle(color: C.dim, fontSize: 13)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: c,
-                autofocus: true,
-                minLines: 2,
-                maxLines: 8,
-                autocorrect: false,
-                textCapitalization: TextCapitalization.none,
-                keyboardType: TextInputType.multiline,
-                style: const TextStyle(fontFamily: mono, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Type, dictate or paste — edit it here, then run',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.content_paste_rounded, size: 20),
-                    onPressed: () async {
-                      final d = await Clipboard.getData(Clipboard.kTextPlain);
-                      final s = d?.text ?? '';
-                      final v = c.value;
-                      final sel = v.selection.isValid
-                          ? v.selection
-                          : TextSelection.collapsed(offset: v.text.length);
-                      c.value = v.replaced(sel, s);
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(children: [
-                TextButton(
-                    onPressed: () => c.clear(), child: const Text('Clear')),
-                const Spacer(),
-                OutlinedButton(
-                    onPressed: () => Navigator.pop(context, (c.text, false)),
-                    child: const Text('Insert')),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                    onPressed: () => Navigator.pop(context, (c.text, true)),
-                    icon: const Icon(Icons.keyboard_return_rounded, size: 18),
-                    label: const Text('Run')),
-              ]),
-            ]),
-      ),
-    );
+    final r = await composeSheet(context, c, title: 'Command', runLabel: 'Run');
     if (r == null) {
       _draft = c.text;
       return;
@@ -257,66 +288,146 @@ class TerminalPanelState extends State<TerminalPanel> {
     final (text, run) = r;
     if (text.isEmpty && !run) return;
     if (text.contains('\n')) {
-      terms.paste(text);
+      terms.paste(tab, text);
     } else {
-      terms.type(text);
+      terms.type(tab, text);
     }
-    if (run) terms.type('\r');
+    if (run) terms.type(tab, '\r');
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: terms,
-      builder: (context, _) {
-        final t = terms.current;
-        return Column(children: [
-          Expanded(
-            child: t == null
-                ? Center(
-                    child: Text(
-                        terms.link.online ? 'Opening a shell…' : 'Waiting for your Mac…',
-                        style: const TextStyle(color: C.dim)))
-                : Stack(children: [
-                    Positioned.fill(
-                      child: TerminalView(
-                        t.terminal,
-                        key: _view,
-                        controller: t.controller,
-                        focusNode: _focus,
-                        theme: termTheme,
-                        textStyle: TerminalStyle(
-                            fontSize: widget.fontSize, fontFamily: mono),
-                        padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-                        deleteDetection: true,
-                        cursorType: TerminalCursorType.block,
-                        readOnly: t.exited,
-                      ),
-                    ),
-                    Positioned(
-                      top: 6,
-                      right: 8,
-                      child: ListenableBuilder(
-                        listenable: t.controller,
-                        builder: (context, _) => t.controller.selection == null
-                            ? const SizedBox.shrink()
-                            : _CopyChip(
-                                onCopy: () => _copy(t),
-                                onCancel: t.controller.clearSelection),
-                      ),
-                    ),
-                  ]),
-          ),
-          _KeyBar(
-            terms: terms,
-            onKeyboard: _toggleKeyboard,
-            onPaste: _paste,
-            onCompose: _compose,
-          ),
-        ]);
-      },
-    );
+    final t = tab;
+    return Column(children: [
+      Expanded(
+        child: TermSurface(
+          key: _surface,
+          tab: t,
+          fontSize: widget.fontSize,
+          onFocus: widget.onFocus,
+          empty: terms.link.online ? 'Opening a shell…' : 'Waiting for your Mac…',
+        ),
+      ),
+      KeyBar(keys: [
+        TypingKey(surface: _surface),
+        TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
+        TKey(label: 'tab', onTap: () => terms.key(t, TerminalKey.tab)),
+        TKey(label: 'ctrl', active: terms.ctrl, onTap: terms.toggleCtrl),
+        TKey(label: 'alt', active: terms.alt, onTap: terms.toggleAlt),
+        ...arrowKeys(terms, t),
+        TKey(label: '^C', color: C.red, onTap: () => terms.type(t, '\x03')),
+        TKey(icon: Icons.content_paste_rounded, onTap: () => pasteInto(context, terms, t)),
+        TKey(icon: Icons.edit_note_rounded, color: C.accent, onTap: _compose),
+        for (final s in ['|', '~', '/', '-', '_', '*', '>', '&', r'$', '`'])
+          TKey(label: s, onTap: () => t?.terminal.textInput(s)),
+        TKey(label: 'home', onTap: () => terms.key(t, TerminalKey.home)),
+        TKey(label: 'end', onTap: () => terms.key(t, TerminalKey.end)),
+        TKey(label: 'pgup', onTap: () => terms.key(t, TerminalKey.pageUp)),
+        TKey(label: 'pgdn', onTap: () => terms.key(t, TerminalKey.pageDown)),
+        TKey(icon: Icons.backspace_outlined, repeat: true, onTap: () => terms.key(t, TerminalKey.backspace)),
+      ]),
+    ]);
   }
+}
+
+/// The key bar's keyboard button for a [TermSurface]; lit while typing.
+class TypingKey extends StatefulWidget {
+  const TypingKey({super.key, required this.surface});
+  final GlobalKey<TermSurfaceState> surface;
+  @override
+  State<TypingKey> createState() => _TypingKeyState();
+}
+
+class _TypingKeyState extends State<TypingKey> {
+  ValueNotifier<bool>? _n;
+
+  @override
+  void initState() {
+    super.initState();
+    // The surface is built in the same frame; pick up its notifier after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _n = widget.surface.currentState?.typing);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _n ?? widget.surface.currentState?.typing;
+    Widget key(bool on) => TKey(
+          icon: on ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
+          active: on,
+          onTap: () => widget.surface.currentState?.toggleKeyboard(),
+        );
+    if (n == null) return key(false);
+    return ValueListenableBuilder<bool>(valueListenable: n, builder: (_, on, _) => key(on));
+  }
+}
+
+List<Widget> arrowKeys(Terms terms, TermTab? t) => [
+      TKey(icon: Icons.keyboard_arrow_up_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowUp)),
+      TKey(icon: Icons.keyboard_arrow_down_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowDown)),
+      TKey(icon: Icons.keyboard_arrow_left_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowLeft)),
+      TKey(icon: Icons.keyboard_arrow_right_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowRight)),
+    ];
+
+Future<void> pasteInto(BuildContext context, Terms terms, TermTab? t) async {
+  final d = await Clipboard.getData(Clipboard.kTextPlain);
+  final s = d?.text;
+  if (s == null || s.isEmpty) {
+    if (context.mounted) toast(context, 'Clipboard is empty');
+    return;
+  }
+  terms.paste(t, s);
+}
+
+/// A bottom sheet with a multi-line field: returns (text, run) or null.
+Future<(String, bool)?> composeSheet(BuildContext context, TextEditingController c,
+    {required String title, required String runLabel}) {
+  return showModalBottomSheet<(String, bool)>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(title, style: const TextStyle(color: C.dim, fontSize: 13)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: c,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 8,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.none,
+          keyboardType: TextInputType.multiline,
+          style: const TextStyle(fontFamily: mono, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Type, dictate or paste — edit it here, then run',
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.content_paste_rounded, size: 20),
+              onPressed: () async {
+                final d = await Clipboard.getData(Clipboard.kTextPlain);
+                final s = d?.text ?? '';
+                final v = c.value;
+                final sel = v.selection.isValid ? v.selection : TextSelection.collapsed(offset: v.text.length);
+                c.value = v.replaced(sel, s);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          TextButton(onPressed: () => c.clear(), child: const Text('Clear')),
+          const Spacer(),
+          OutlinedButton(onPressed: () => Navigator.pop(context, (c.text, false)), child: const Text('Insert')),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+              onPressed: () => Navigator.pop(context, (c.text, true)),
+              icon: const Icon(Icons.keyboard_return_rounded, size: 18),
+              label: Text(runLabel)),
+        ]),
+      ]),
+    ),
+  );
 }
 
 class _CopyChip extends StatelessWidget {
@@ -345,39 +456,12 @@ class _CopyChip extends StatelessWidget {
   }
 }
 
-class _KeyBar extends StatelessWidget {
-  const _KeyBar({
-    required this.terms,
-    required this.onKeyboard,
-    required this.onPaste,
-    required this.onCompose,
-  });
-  final Terms terms;
-  final VoidCallback onKeyboard, onPaste, onCompose;
+class KeyBar extends StatelessWidget {
+  const KeyBar({super.key, required this.keys});
+  final List<Widget> keys;
 
   @override
   Widget build(BuildContext context) {
-    final keys = <Widget>[
-      _Key(icon: Icons.keyboard_rounded, onTap: onKeyboard),
-      _Key(label: 'esc', onTap: () => terms.key(TerminalKey.escape)),
-      _Key(label: 'tab', onTap: () => terms.key(TerminalKey.tab)),
-      _Key(label: 'ctrl', active: terms.ctrl, onTap: terms.toggleCtrl),
-      _Key(label: 'alt', active: terms.alt, onTap: terms.toggleAlt),
-      _Key(icon: Icons.keyboard_arrow_up_rounded, repeat: true, onTap: () => terms.key(TerminalKey.arrowUp)),
-      _Key(icon: Icons.keyboard_arrow_down_rounded, repeat: true, onTap: () => terms.key(TerminalKey.arrowDown)),
-      _Key(icon: Icons.keyboard_arrow_left_rounded, repeat: true, onTap: () => terms.key(TerminalKey.arrowLeft)),
-      _Key(icon: Icons.keyboard_arrow_right_rounded, repeat: true, onTap: () => terms.key(TerminalKey.arrowRight)),
-      _Key(label: '^C', color: C.red, onTap: () => terms.type('\x03')),
-      _Key(icon: Icons.content_paste_rounded, onTap: onPaste),
-      _Key(icon: Icons.edit_note_rounded, color: C.accent, onTap: onCompose),
-      for (final s in ['|', '~', '/', '-', '_', '*', '>', '&', r'$', '`'])
-        _Key(label: s, onTap: () => terms.current?.terminal.textInput(s)),
-      _Key(label: 'home', onTap: () => terms.key(TerminalKey.home)),
-      _Key(label: 'end', onTap: () => terms.key(TerminalKey.end)),
-      _Key(label: 'pgup', onTap: () => terms.key(TerminalKey.pageUp)),
-      _Key(label: 'pgdn', onTap: () => terms.key(TerminalKey.pageDown)),
-      _Key(icon: Icons.backspace_outlined, repeat: true, onTap: () => terms.key(TerminalKey.backspace)),
-    ];
     return Container(
       height: 44,
       decoration: const BoxDecoration(
@@ -393,8 +477,9 @@ class _KeyBar extends StatelessWidget {
   }
 }
 
-class _Key extends StatefulWidget {
-  const _Key({
+class TKey extends StatefulWidget {
+  const TKey({
+    super.key,
     this.label,
     this.icon,
     required this.onTap,
@@ -409,10 +494,10 @@ class _Key extends StatefulWidget {
   final Color? color;
 
   @override
-  State<_Key> createState() => _KeyState();
+  State<TKey> createState() => _TKeyState();
 }
 
-class _KeyState extends State<_Key> {
+class _TKeyState extends State<TKey> {
   Timer? _t;
 
   void _start() {

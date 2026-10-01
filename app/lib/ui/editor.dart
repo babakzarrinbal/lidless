@@ -89,6 +89,7 @@ class EditorViewState extends State<EditorView> {
   int _mtime = 0;
   String? _problem; // binary / too large / error
   bool _saving = false, _wrap = false, _dirty = false;
+  bool _editing = false; // read-only until Edit, so a tap never pops the keyboard
   late final _toolbar = MobileSelectionToolbarController(builder: _toolbarMenu);
 
   String get name => widget.path.split('/').last;
@@ -140,6 +141,19 @@ class EditorViewState extends State<EditorView> {
       old?.dispose();
     } catch (e) {
       if (mounted) setState(() => _problem = '$e');
+    }
+  }
+
+  void _setEditing(bool on) {
+    setState(() => _editing = on);
+    if (on) {
+      // Focus after the rebuild so the editor opens its input connection.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _focus.unfocus();
+        _focus.requestFocus();
+      });
+    } else {
+      _focus.unfocus();
     }
   }
 
@@ -289,8 +303,22 @@ class EditorViewState extends State<EditorView> {
                 ),
             ]),
           ),
+          if (c != null && !_editing)
+            TextButton.icon(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => _setEditing(true),
+              icon: const Icon(Icons.edit_rounded, size: 17),
+              label: const Text('Edit'),
+            ),
+          if (c != null && _editing)
+            IconButton(
+              tooltip: 'Done editing',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.keyboard_hide_rounded, size: 20, color: C.accent),
+              onPressed: () => _setEditing(false),
+            ),
           if (c != null) ...[
-            ListenableBuilder(
+            if (_editing) ListenableBuilder(
               listenable: c,
               builder: (_, _) => Row(children: [
                 IconButton(
@@ -318,6 +346,7 @@ class EditorViewState extends State<EditorView> {
                     setState(() => _wrap = !_wrap);
                     (await SharedPreferences.getInstance()).setBool('wrap', _wrap);
                   case 'replace':
+                    if (!_editing) _setEditing(true);
                     _find.replaceMode();
                   case 'copyall':
                     Clipboard.setData(ClipboardData(text: c.text));
@@ -373,6 +402,7 @@ class EditorViewState extends State<EditorView> {
                     findController: _find,
                     toolbarController: _toolbar,
                     focusNode: _focus,
+                    readOnly: !_editing,
                     wordWrap: _wrap,
                     padding: const EdgeInsets.only(left: 4, right: 10, top: 6, bottom: 40),
                     style: CodeEditorStyle(

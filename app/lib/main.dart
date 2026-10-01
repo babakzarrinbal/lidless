@@ -6,11 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'crypto/noise.dart';
 import 'model/terms.dart';
 import 'net/link.dart';
 import 'net/store.dart';
-import 'ui/files_panel.dart';
 import 'ui/home.dart';
 import 'ui/pair.dart';
 import 'ui/theme.dart';
@@ -37,11 +35,11 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
   final _auth = LocalAuthentication();
   bool _ready = false, _locked = true, _authing = false, _canLock = true;
   DateTime? _pausedAt;
-  KeyPair? _key;
-  Link? _link; // paired and connected (or reconnecting)
+  List<MacPairing> _macs = [];
+  Link? _link; // the Mac on screen, connected (or reconnecting)
   Link? _attempt; // a pairing in progress
+  bool _adding = false; // pairing another Mac
   Terms? _terms;
-  Files? _files;
   String _name = 'Android phone';
   StreamSubscription? _links;
 
@@ -57,8 +55,9 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
   Future<void> _boot() async {
     final prefs = await SharedPreferences.getInstance();
     _name = prefs.getString('deviceName') ?? _name;
-    _key = await Store.phoneKey();
-    final p = await Store.pairing();
+    _macs = await Store.pairings();
+    final active = await Store.active();
+    final p = _macs.where((m) => m.room == active).firstOrNull ?? _macs.firstOrNull;
     try {
       _canLock = await _auth.isDeviceSupported();
     } catch (_) {
@@ -74,20 +73,26 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
   }
 
   void _use(MacPairing p) {
-    final link = Link(p, _key!, deviceName: _name);
+    final link = Link(p, p.key, deviceName: _name);
     _link = link;
     _terms = Terms(link);
-    _files = Files(link);
     link.start();
+    Store.setActive(p.room);
   }
 
   void _drop() {
     _terms?.dispose();
-    _files?.dispose();
     _link?.dispose();
     _terms = null;
-    _files = null;
     _link = null;
+  }
+
+  /// Shows another paired Mac. Its terminals keep running on the Mac we leave.
+  void _switch(MacPairing p) {
+    if (_link?.pairing.room == p.room) return;
+    _drop();
+    _use(p);
+    setState(() {});
   }
 
   // ---- lock ----
@@ -151,18 +156,21 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     }
     final ctx = _nav.currentContext;
     if (ctx == null || !ctx.mounted) return;
-    final name = await confirmPairing(ctx, p, _name, replacing: _link != null);
+    final name = await confirmPairing(ctx, p, _name, replacing: _macs.any((m) => m.room == p.room));
     if (name == null) return;
     _name = name;
     (await SharedPreferences.getInstance()).setString('deviceName', name);
     _attempt?.dispose();
-    final a = Link(p, _key!, deviceName: name);
+    final withKey = p.withKey(Store.newKey()); // every Mac gets its own phone key
+    final a = Link(withKey, withKey.key, deviceName: name);
     a.onPaired = (paired) {
       if (_attempt != a) return;
       // Let the handshake callback finish before tearing this link down.
       scheduleMicrotask(() {
         a.dispose();
         _attempt = null;
+        _adding = false;
+        _macs = [..._macs.where((m) => m.room != paired.room), paired];
         _drop();
         _use(paired);
         if (mounted) setState(() {});
@@ -178,10 +186,16 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     setState(() => _attempt = null);
   }
 
+  /// Forgets the Mac on screen (and this phone's key for it), then shows
+  /// the next paired Mac, if any.
   Future<void> _unpair() async {
+    final p = _link?.pairing;
     _drop();
-    await Store.forget();
-    _key = await Store.phoneKey(); // a fresh identity for the next pairing
+    if (p != null) {
+      await Store.forget(p);
+      _macs = _macs.where((m) => m.room != p.room).toList();
+    }
+    if (_macs.isNotEmpty) _use(_macs.first);
     if (mounted) setState(() {});
   }
 
@@ -199,14 +213,21 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     Widget body;
     if (!_ready) {
       body = const Scaffold();
-    } else if (_attempt != null || _link == null) {
-      body = PairScreen(onCode: _onCode, attempt: _attempt, onCancel: _cancelAttempt);
+    } else if (_attempt != null || _link == null || _adding) {
+      body = PairScreen(
+        onCode: _onCode,
+        attempt: _attempt,
+        onCancel: _cancelAttempt,
+        onBack: _link != null && _attempt == null ? () => setState(() => _adding = false) : null,
+      );
     } else {
       body = Home(
         key: ObjectKey(_link),
         link: _link!,
         terms: _terms!,
-        files: _files!,
+        macs: _macs,
+        onSwitch: _switch,
+        onAddMac: () => setState(() => _adding = true),
         onLock: _lockNow,
         onUnpair: _unpair,
       );

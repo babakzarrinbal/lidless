@@ -1,5 +1,6 @@
-// What the phone remembers: its own Noise key and the paired Mac. Both live in
-// the Android Keystore-backed secure storage, never in plain prefs.
+// What the phone remembers: the paired Macs, each with its own phone-side
+// Noise key. They live in the Android Keystore-backed secure storage, never in
+// plain prefs.
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -13,6 +14,7 @@ class MacPairing {
   final String macPub; // hex
   final String host;
   final String? token; // one-time pairing token, dropped after first success
+  final String? phoneKey; // this phone's private key for this Mac (hex)
 
   const MacPairing({
     required this.relay,
@@ -21,7 +23,13 @@ class MacPairing {
     required this.macPub,
     required this.host,
     this.token,
+    this.phoneKey,
   });
+
+  KeyPair get key => KeyPair(unhex(phoneKey!));
+
+  MacPairing withKey(String key) => MacPairing(
+      relay: relay, pin: pin, room: room, macPub: macPub, host: host, token: token, phoneKey: key);
 
   /// Parses `mr1.<base64url json>` (from the QR, a paste, or the deep link).
   static MacPairing parse(String code) {
@@ -49,7 +57,7 @@ class MacPairing {
   }
 
   MacPairing paired({String? host}) => MacPairing(
-      relay: relay, pin: pin, room: room, macPub: macPub, host: host ?? this.host);
+      relay: relay, pin: pin, room: room, macPub: macPub, host: host ?? this.host, phoneKey: phoneKey);
 
   Map<String, dynamic> toJson() => {
         'relay': relay,
@@ -58,6 +66,7 @@ class MacPairing {
         'macPub': macPub,
         'host': host,
         if (token != null) 'token': token,
+        if (phoneKey != null) 'phoneKey': phoneKey,
       };
 
   factory MacPairing.fromJson(Map<String, dynamic> m) => MacPairing(
@@ -67,6 +76,7 @@ class MacPairing {
         macPub: m['macPub'],
         host: m['host'] ?? 'Mac',
         token: m['token'],
+        phoneKey: m['phoneKey'],
       );
 }
 
@@ -74,29 +84,63 @@ class Store {
   static const _s = FlutterSecureStorage(
       aOptions: AndroidOptions(), iOptions: IOSOptions());
 
-  static Future<KeyPair> phoneKey() async {
-    final hex = await _s.read(key: 'phone_key');
-    if (hex != null && hex.length == 64) return KeyPair(unhex(hex));
-    final k = KeyPair.generate();
-    await _s.write(key: 'phone_key', value: hexOf(k.priv));
-    return k;
-  }
+  /// A fresh phone key for a new pairing (hex).
+  static String newKey() => hexOf(KeyPair.generate().priv);
 
-  static Future<MacPairing?> pairing() async {
-    final s = await _s.read(key: 'pairing');
-    if (s == null) return null;
+  /// Every paired Mac (completed pairings only), oldest first.
+  static Future<List<MacPairing>> pairings() async {
+    await _migrate();
+    final s = await _s.read(key: 'pairings');
+    if (s == null) return [];
     try {
-      return MacPairing.fromJson(jsonDecode(s));
+      return (jsonDecode(s) as List)
+          .map((m) => MacPairing.fromJson((m as Map).cast<String, dynamic>()))
+          .where((p) => p.phoneKey != null && p.token == null)
+          .toList();
     } catch (_) {
-      return null;
+      return [];
     }
   }
 
-  static Future<void> savePairing(MacPairing p) =>
-      _s.write(key: 'pairing', value: jsonEncode(p.toJson()));
+  static Future<void> _write(List<MacPairing> l) =>
+      _s.write(key: 'pairings', value: jsonEncode([for (final p in l) p.toJson()]));
 
-  /// Forgets the Mac and rotates the phone key, so the old identity is useless.
-  static Future<void> forget() async {
+  /// Adds or updates the pairing for [p]'s Mac (by room).
+  static Future<void> savePairing(MacPairing p) async {
+    if (p.phoneKey == null || p.token != null) return;
+    final l = await pairings();
+    final i = l.indexWhere((x) => x.room == p.room);
+    if (i >= 0) {
+      l[i] = p;
+    } else {
+      l.add(p);
+    }
+    await _write(l);
+  }
+
+  /// Forgets one Mac along with this phone's key for it.
+  static Future<void> forget(MacPairing p) async {
+    final l = await pairings();
+    l.removeWhere((x) => x.room == p.room);
+    await _write(l);
+    if ((await active()) == p.room) await _s.delete(key: 'active');
+  }
+
+  static Future<String?> active() => _s.read(key: 'active');
+  static Future<void> setActive(String room) => _s.write(key: 'active', value: room);
+
+  // Version 1 kept one Mac and one global phone key.
+  static Future<void> _migrate() async {
+    final old = await _s.read(key: 'pairing');
+    if (old == null) return;
+    final key = await _s.read(key: 'phone_key');
+    try {
+      final p = MacPairing.fromJson(jsonDecode(old));
+      if (key != null && key.length == 64) {
+        await _write([p.withKey(key)]);
+        await setActive(p.room);
+      }
+    } catch (_) {}
     await _s.delete(key: 'pairing');
     await _s.delete(key: 'phone_key');
   }
