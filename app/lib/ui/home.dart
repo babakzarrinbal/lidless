@@ -58,6 +58,8 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     terms.onWake = _wake;
+    terms.addListener(_openOnly);
+    _openOnly(); // the list may be in already
     SharedPreferences.getInstance().then((p) {
       if (!mounted) return;
       setState(() {
@@ -79,8 +81,24 @@ class _HomeState extends State<Home> {
     if (s != null) _enter(s);
   }
 
+  // The app opens on the recent page, but with just one session open it goes
+  // straight into it, once the Mac's list has arrived.
+  bool _opened = false;
+  void _openOnly() {
+    if (_opened || !terms.synced) return;
+    _opened = true;
+    terms.removeListener(_openOnly);
+    final all = terms.sessions;
+    if (_recent && all.length == 1 && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _recent && terms.sessions.length == 1) _select(terms.sessions.single.id);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    terms.removeListener(_openOnly);
     if (terms.onWake == _wake) terms.onWake = null;
     for (final f in _files.values) {
       f.dispose();

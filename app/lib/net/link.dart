@@ -99,6 +99,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _set(LinkState s, [String? err]) {
+    if (s != state) debugPrint('lidless: link ${s.name}${err == null ? '' : ': $err'}');
     state = s;
     error = err;
     if (!_disposed) notifyListeners();
