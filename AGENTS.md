@@ -96,20 +96,21 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
 
 ## Open threads (2026-10-01)
 
-- **Not yet released through brew:**
-  - per-terminal and per-Mac shell choice (`shell.list`/`shell.set`);
-  - the Manage Macs page's agent side;
-  - the one-agent lock.
-
-  Until `./dev.sh brew-publish` runs, the other Mac's shell picker says
-  "Update Lidless on the Mac". Then, on that Mac:
+- **Released through brew as 2026.10.01.3** (shell choice, Manage Macs agent
+  side, one-agent lock, `sh.brew.*` label). The other Mac still needs:
   ```bash
   brew update && brew upgrade macremote && brew services restart macremote
+  brew upgrade --cask --greedy copilot-cli
   ```
+- **Copilot resume fails** ("Session file is corrupted … unknown event type")
+  when Homebrew's `copilot-cli` is older than the copy VS Code bundles. It is
+  an auto-updating cask, so plain `brew upgrade` skips it; use `--greedy`.
+  Evidence: `~/.copilot/logs/`.
 - **The other Mac (brew) runs two agents** after a `macremote install`. Fix:
   ```bash
   macremote uninstall && brew services restart macremote
   ```
-- `origin/main` is behind local: pushing needs the owner's go-ahead.
+- Brew service log: `/opt/homebrew/var/log/macremote.log` (`./dev.sh log`
+  reads the LaunchAgent's).
 - Phones run app 0.2.0 built from 96e4b9d. Still to check on a phone: the
   Recent page right after opening a Mac.
