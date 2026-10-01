@@ -197,15 +197,23 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	if h.Pair == "" {
 		return "", errors.New("this phone is not paired with this Mac (or was removed)")
 	}
+	// Claim the token by renaming its file: the rename is atomic, so two phones
+	// racing with the same code cannot both get in. A wrong code puts it back.
+	claimed := pairingPath() + ".claimed"
+	if err := os.Rename(pairingPath(), claimed); err != nil {
+		return "", errors.New("pairing code expired or already used; run `macremote pair` again")
+	}
 	var p Pairing
-	b, err := os.ReadFile(pairingPath())
+	b, err := os.ReadFile(claimed)
 	if err != nil || json.Unmarshal(b, &p) != nil || time.Now().After(p.Expires) {
+		os.Remove(claimed)
 		return "", errors.New("pairing code expired; run `macremote pair` again")
 	}
 	if subtle.ConstantTimeCompare([]byte(p.Token), []byte(h.Pair)) != 1 {
+		os.Rename(claimed, pairingPath())
 		return "", errors.New("wrong pairing code")
 	}
-	os.Remove(pairingPath()) // single use
+	os.Remove(claimed) // single use
 	name := strings.TrimSpace(h.Name)
 	if name == "" || len(name) > 60 {
 		name = "phone"
