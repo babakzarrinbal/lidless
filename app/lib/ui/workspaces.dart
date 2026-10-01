@@ -43,18 +43,9 @@ class _WorkspaceListState extends State<WorkspaceList> {
   final _convs = <String, List<Conversation>>{};
   final _oldOpen = <String>{};
   late final Set<String> _shut = {...?widget.prefs?.getStringList(_shutKey)};
-  late final Map<String, int> _seen = _loadSeen();
+  late final _seen = SeenConversations(widget.prefs, widget.mac);
 
   String get _shutKey => 'foldersShut:${widget.mac}';
-  String get _seenKey => 'convSeen:${widget.mac}';
-
-  Map<String, int> _loadSeen() {
-    try {
-      return (jsonDecode(widget.prefs?.getString(_seenKey) ?? '{}') as Map).cast<String, int>();
-    } catch (_) {
-      return {};
-    }
-  }
 
   @override
   void initState() {
@@ -76,24 +67,16 @@ class _WorkspaceListState extends State<WorkspaceList> {
     try {
       final list = await (load ?? (d) => Conversation.list(widget.link, d))(dir);
       if (!mounted) return;
-      final open = _openTerms();
-      for (final c in list) {
-        // First seen, or open on the phone: read up to now.
-        if (!_seen.containsKey(c.id) || open.contains(c.term)) _seen[c.id] = c.mtime.millisecondsSinceEpoch;
-      }
-      widget.prefs?.setString(_seenKey, jsonEncode(_seen));
+      _seen.listed(list, _openTerms());
       setState(() => _convs[dir] = list);
     } catch (_) {
       // an older agent, or the folder is gone: the open sessions still show
     }
   }
 
-  Set<int> _openTerms() => {
-        for (final s in widget.sessions)
-          if (s.agent != null) s.agent!.id,
-      };
+  Set<int> _openTerms() => openTerms(widget.sessions);
 
-  bool _unread(Conversation c) => c.mtime.millisecondsSinceEpoch > (_seen[c.id] ?? 0);
+  bool _unread(Conversation c) => _seen.unread(c);
 
   void _toggle(String dir) {
     setState(() => _shut.contains(dir) ? _shut.remove(dir) : _shut.add(dir));
@@ -101,8 +84,7 @@ class _WorkspaceListState extends State<WorkspaceList> {
   }
 
   void _resume(String dir, Conversation c) {
-    _seen[c.id] = c.mtime.millisecondsSinceEpoch;
-    widget.prefs?.setString(_seenKey, jsonEncode(_seen));
+    _seen.read(c);
     widget.onResume(dir, c);
   }
 
@@ -202,6 +184,183 @@ class _WorkspaceListState extends State<WorkspaceList> {
           ]),
         ),
       );
+}
+
+Set<int> openTerms(List<Session> sessions) => {
+      for (final s in sessions)
+        if (s.agent != null) s.agent!.id,
+    };
+
+/// Which conversations wrote something since the phone last showed them, per
+/// Mac: {id: mtime ms read up to}.
+class SeenConversations {
+  SeenConversations(this.prefs, String mac) : _key = 'convSeen:$mac' {
+    try {
+      _seen.addAll((jsonDecode(prefs?.getString(_key) ?? '{}') as Map).cast<String, int>());
+    } catch (_) {}
+  }
+  final SharedPreferences? prefs;
+  final String _key;
+  final _seen = <String, int>{};
+
+  bool unread(Conversation c) => c.mtime.millisecondsSinceEpoch > (_seen[c.id] ?? 0);
+
+  /// The Mac listed these: the ones first seen, or open on the phone, are
+  /// read up to now.
+  void listed(List<Conversation> list, Set<int> open) {
+    for (final c in list) {
+      if (!_seen.containsKey(c.id) || open.contains(c.term)) _seen[c.id] = c.mtime.millisecondsSinceEpoch;
+    }
+    _save();
+  }
+
+  void read(Conversation c) {
+    _seen[c.id] = c.mtime.millisecondsSinceEpoch;
+    _save();
+  }
+
+  void _save() => prefs?.setString(_key, jsonEncode(_seen));
+}
+
+/// The newest conversations of every folder on the Mac, to pick one up:
+/// today's, then older ones folded under "Old sessions".
+class RecentList extends StatefulWidget {
+  const RecentList({
+    super.key,
+    required this.link,
+    required this.prefs,
+    required this.mac,
+    required this.sessions,
+    required this.onResume,
+    this.load,
+  });
+  final Link link;
+  final SharedPreferences? prefs;
+  final String mac;
+  final List<Session> sessions;
+  final void Function(String dir, Conversation c) onResume;
+  final Future<List<Conversation>> Function()? load; // tests: instead of asking the Mac
+
+  @override
+  State<RecentList> createState() => _RecentListState();
+}
+
+class _RecentListState extends State<RecentList> {
+  List<Conversation>? _list;
+  bool _old = false, _busy = false;
+  late final _seen = SeenConversations(widget.prefs, widget.mac);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.link.addListener(_online);
+    _fetch();
+  }
+
+  @override
+  void dispose() {
+    widget.link.removeListener(_online);
+    super.dispose();
+  }
+
+  void _online() {
+    if (_list == null && widget.link.online) _fetch();
+  }
+
+  Future<void> _fetch() async {
+    final load = widget.load;
+    if (_busy || (load == null && !widget.link.online)) return;
+    _busy = true;
+    try {
+      final list = await (load ?? () => Conversation.recent(widget.link))();
+      if (!mounted) return;
+      _seen.listed(list, openTerms(widget.sessions));
+      setState(() => _list = list);
+    } catch (_) {
+      if (mounted && _list == null) setState(() => _list = const []); // an older agent
+    } finally {
+      _busy = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = _list;
+    if (list == null) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+    final midnight = DateUtils.dateOnly(DateTime.now());
+    final today = list.where((c) => !c.mtime.isBefore(midnight)).toList();
+    final old = list.where((c) => c.mtime.isBefore(midnight)).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        const Expanded(child: Text('Recent sessions', style: TextStyle(color: C.dim, fontSize: 13))),
+        IconButton(
+          tooltip: 'Refresh',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.refresh_rounded, size: 19, color: C.dim),
+          onPressed: _fetch,
+        ),
+      ]),
+      if (list.isEmpty) const Text('No Claude conversations in the shared folders yet.', style: TextStyle(color: C.dim)),
+      for (final c in today) _tile(c),
+      if (old.isNotEmpty) ...[
+        InkWell(
+          onTap: () => setState(() => _old = !_old),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(children: [
+              Icon(_old ? Icons.expand_more_rounded : Icons.chevron_right_rounded, size: 16, color: C.dim),
+              const SizedBox(width: 6),
+              Text('Old sessions (${old.length})', style: const TextStyle(fontSize: 12.5, color: C.dim)),
+              if (!_old && old.any(_seen.unread)) ...[const SizedBox(width: 8), const StatusDot(StatusDot.unread)],
+            ]),
+          ),
+        ),
+        if (_old)
+          for (final c in old) _tile(c),
+      ],
+    ]);
+  }
+
+  Widget _tile(Conversation c) {
+    final open = openTerms(widget.sessions).contains(c.term);
+    return InkWell(
+      onTap: () {
+        _seen.read(c);
+        widget.onResume(c.dir, c);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(children: [
+          StatusDot(_seen.unread(c) && !open
+              ? StatusDot.unread
+              : c.running
+                  ? StatusDot.active
+                  : StatusDot.idle),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.title.isEmpty ? '(untitled)' : c.title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5)),
+              const SizedBox(height: 2),
+              Text(
+                '${baseName(c.dir)}${open ? ' · open on the phone' : c.running ? ' · open on the Mac' : ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: C.dim),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Text(agoText(c.mtime), style: const TextStyle(fontSize: 11.5, color: C.dim)),
+        ]),
+      ),
+    );
+  }
 }
 
 /// Green: running. Blue: wrote something not seen yet. Gray: idle.

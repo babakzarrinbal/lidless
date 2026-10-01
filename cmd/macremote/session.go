@@ -601,11 +601,22 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		return chatSessions(dir, s.a.terms.all())
+	case "chat.recent":
+		return chatRecent(s.a.terms.all(), 40, func(dir string) bool {
+			_, err := resolve(roots, dir)
+			return err == nil
+		}), nil
 	case "chat.commands":
 		dir, _ := resolve(roots, p.Dir) // outside the shared folders: the user's commands only
 		return chatCommands(dir, p.Kind), nil
 	case "usage":
 		return claudeUsage(), nil
+	case "chat.stop":
+		if err := stopClaude(p.Session); err != nil {
+			return nil, err
+		}
+		logf("%s quit the Mac's Claude on conversation %s to take it over", s.device, p.Session)
+		return true, nil
 	case "tokens.reset":
 		if !tokenLedger.reset(p.Tool, p.Account) {
 			return nil, fmt.Errorf("no tokens counted for %s", p.Account)

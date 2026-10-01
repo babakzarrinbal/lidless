@@ -11,8 +11,10 @@ class Conversation {
         mtime = DateTime.fromMillisecondsSinceEpoch(((m['mtime'] as num?) ?? 0).toInt() * 1000),
         size = ((m['size'] as num?) ?? 0).toInt(),
         running = m['running'] == true,
-        term = ((m['term'] as num?) ?? 0).toInt();
+        term = ((m['term'] as num?) ?? 0).toInt(),
+        dir = m['dir'] as String? ?? '';
   final String id, title, prompt;
+  final String dir; // the folder (the recent list only)
   final DateTime mtime;
   final int size;
   final bool running; // a Claude process has it open
@@ -20,6 +22,12 @@ class Conversation {
 
   static Future<List<Conversation>> list(Link link, String dir) async {
     final r = await link.call('chat.sessions', {'dir': dir});
+    return [for (final m in (r as List? ?? const []).cast<Map>()) Conversation.from(m)];
+  }
+
+  /// The newest conversations of every shared folder.
+  static Future<List<Conversation>> recent(Link link) async {
+    final r = await link.call('chat.recent', null);
     return [for (final m in (r as List? ?? const []).cast<Map>()) Conversation.from(m)];
   }
 }

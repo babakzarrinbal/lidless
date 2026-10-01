@@ -156,6 +156,40 @@ void main() {
     expect(find.textContaining('Resets in 9d'), findsOneWidget);
   });
 
+  testWidgets('the recent page lists every folder\'s conversations, old ones folded', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final link = Link(const MacPairing(relay: 'h:1', pin: '', room: '123456789012', macPub: '', host: 'mac'), KeyPair.generate());
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    Conversation? resumed;
+    String? dir;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: RecentList(
+            link: link,
+            prefs: prefs,
+            mac: 'm',
+            sessions: const [],
+            onResume: (d, c) => (dir, resumed) = (d, c),
+            load: () async => [
+              Conversation.from({'id': 'a', 'title': 'Relay fix', 'mtime': now, 'dir': '/w/relay', 'running': true}),
+              Conversation.from({'id': 'b', 'title': 'Old app work', 'mtime': now - 3 * 86400, 'dir': '/w/app'}),
+            ],
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Relay fix'), findsOneWidget);
+    expect(find.text('relay · open on the Mac'), findsOneWidget);
+    expect(find.text('Old app work'), findsNothing);
+    await tester.tap(find.text('Old sessions (1)'));
+    await tester.pump();
+    await tester.tap(find.text('Old app work'));
+    expect((dir, resumed?.id), ('/w/app', 'b'));
+  });
+
   testWidgets('the chat shows Claude working with its word', (tester) async {
     final link = Link(const MacPairing(relay: 'h:1', pin: '', room: '1', macPub: '', host: 'mac'), KeyPair.generate());
     final tab = TermTab(1, 'claude', kind: 'claude', session: 's', dir: '/');

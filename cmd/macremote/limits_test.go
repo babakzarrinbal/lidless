@@ -1,9 +1,34 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestChatRecentAcrossFolders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	write := func(dir, id, text string, age time.Duration) {
+		p := filepath.Join(claudeProjectDir(dir), id+".jsonl")
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(`{"type":"user","cwd":"`+dir+`","message":{"role":"user","content":"`+text+`"}}`+"\n"), 0o600)
+		at := time.Now().Add(-age)
+		os.Chtimes(p, at, at)
+	}
+	write("/w/a.b", "s1", "older", 2*time.Hour)
+	write("/w/c", "s2", "newest", time.Minute)
+	write("/secret", "s3", "hidden", 0)
+	got := chatRecent(nil, 10, func(dir string) bool { return strings.HasPrefix(dir, "/w/") })
+	if len(got) != 2 || got[0].ID != "s2" || got[0].Dir != "/w/c" || got[1].Dir != "/w/a.b" || got[0].Title != "newest" {
+		t.Fatalf("%+v", got)
+	}
+	if one := chatRecent(nil, 1, func(string) bool { return true }); len(one) != 1 || one[0].ID != "s3" {
+		t.Fatalf("%+v", one)
+	}
+}
 
 func TestParseClaudeLimits(t *testing.T) {
 	got := parseClaudeLimits([]byte(`{"subscription_type":"max","rate_limits_available":true,"rate_limits":{

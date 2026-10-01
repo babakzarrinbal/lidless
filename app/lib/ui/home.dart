@@ -41,6 +41,7 @@ class _HomeState extends State<Home> {
   final _files = <String, Files>{};
   final _views = <String, GlobalKey<SessionViewState>>{};
   String? _current;
+  bool _recent = true; // the recent sessions page; the app opens on it
   double _font = 13;
   SharedPreferences? _prefs;
 
@@ -70,7 +71,10 @@ class _HomeState extends State<Home> {
   }
 
   void _select(String id) {
-    setState(() => _current = id);
+    setState(() {
+      _current = id;
+      _recent = false;
+    });
     _prefs?.setString('session:$_mac', id);
   }
 
@@ -139,19 +143,29 @@ class _HomeState extends State<Home> {
       return;
     }
     if (c.running) {
-      final ok = await showDialog<bool>(
+      final how = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Open it here too?'),
-          content: const Text('Claude has this conversation open in a terminal on the Mac. '
-              'A second Claude on it works, but the two will not see each other\'s new messages.'),
+          title: const Text('Open on the Mac'),
+          content: const Text('Claude has this conversation open on the Mac, in a terminal or in an editor.\n\n'
+              'Move here quits that Claude (it saves first) and carries on here with everything so far.\n\n'
+              'Open here too keeps both, but neither sees the other\'s new messages.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open')),
+            TextButton(onPressed: () => Navigator.pop(ctx, 'both'), child: const Text('Open here too')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'move'), child: const Text('Move here')),
           ],
         ),
       );
-      if (ok != true) return;
+      if (how == null) return;
+      if (how == 'move') {
+        try {
+          await link.call('chat.stop', {'session': c.id}, const Duration(seconds: 15));
+        } on RpcError catch (e) {
+          if (mounted) toast(context, e.message, error: true);
+          return;
+        }
+      }
     }
     flagsOf ??= terms.sessions.where((s) => s.dir == dir && s.tool == 'claude').lastOrNull?.id;
     final flags = resumeFlags(_prefs?.getString('sessFlags.$flagsOf') ?? '', c.id);
@@ -186,7 +200,16 @@ class _HomeState extends State<Home> {
     _prefs?.remove('sessFlags.${s.id}');
   }
 
+  void _showRecent() {
+    _scaffold.currentState?.closeDrawer();
+    setState(() => _recent = true);
+  }
+
   Future<void> _back() async {
+    if (_recent && terms.sessions.isNotEmpty) {
+      setState(() => _recent = false);
+      return;
+    }
     final s = _currentOf(terms.sessions);
     if (s != null && await _filesFor(s).back()) return;
     SystemNavigator.pop();
@@ -208,7 +231,7 @@ class _HomeState extends State<Home> {
         builder: (context, _) {
           final all = terms.sessions;
           _prune(all);
-          final cur = _currentOf(all);
+          final cur = _recent ? null : _currentOf(all);
           terms.viewing = cur?.id;
           return Scaffold(
             key: _scaffold,
@@ -239,9 +262,9 @@ class _HomeState extends State<Home> {
             style: const TextStyle(color: C.dim)),
       );
     }
-    if (cur == null) return _empty();
-    return IndexedStack(
-      index: all.indexOf(cur),
+    if (all.isEmpty) return _empty(all);
+    final stack = IndexedStack(
+      index: all.indexOf(cur ?? _currentOf(all)!),
       sizing: StackFit.expand,
       children: [
         for (final s in all)
@@ -257,29 +280,47 @@ class _HomeState extends State<Home> {
           ),
       ],
     );
+    if (cur != null) return stack;
+    // The sessions stay alive underneath.
+    return Stack(children: [Offstage(child: stack), Positioned.fill(child: _empty(all))]);
   }
 
-  Widget _empty() {
+  /// The recent sessions page: new session, the Mac's newest conversations
+  /// from every folder, and recent folders.
+  Widget _empty(List<Session> all) {
     final recent = _prefs?.getStringList('recentDirs:$_mac') ?? [];
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 480),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Icon(Icons.auto_awesome_rounded, size: 40, color: C.accent),
-            const SizedBox(height: 14),
-            Text('No sessions on ${link.host}',
-                textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            const Text('Pick a folder and start Claude Code, Copilot or a terminal in it.',
-                textAlign: TextAlign.center, style: TextStyle(color: C.dim)),
-            const SizedBox(height: 22),
+            if (all.isEmpty) ...[
+              const SizedBox(height: 12),
+              const Icon(Icons.auto_awesome_rounded, size: 40, color: C.accent),
+              const SizedBox(height: 14),
+              Text('No sessions open on ${link.host}',
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              const Text('Pick up a recent one, or start Claude Code, Copilot or a terminal in a folder.',
+                  textAlign: TextAlign.center, style: TextStyle(color: C.dim)),
+              const SizedBox(height: 22),
+            ],
             FilledButton.icon(
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
               onPressed: link.online ? () => _newSession() : null,
               icon: const Icon(Icons.add_rounded),
               label: const Text('New session'),
+            ),
+            const SizedBox(height: 18),
+            RecentList(
+              key: ValueKey(_prefs == null),
+              link: link,
+              prefs: _prefs,
+              mac: _mac,
+              sessions: all,
+              onResume: _resumeIn,
             ),
             if (recent.isNotEmpty) ...[
               const SizedBox(height: 22),
@@ -332,7 +373,7 @@ class _HomeState extends State<Home> {
             Text(cur?.name ?? link.host,
                 overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             Text(
-              cur == null ? label : '${link.host} · ${tildePath(cur.dir, link.home)}',
+              cur == null ? (_recent && link.online ? 'Recent sessions' : label) : '${link.host} · ${tildePath(cur.dir, link.home)}',
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: C.dim, fontSize: 11.5),
             ),
@@ -419,6 +460,13 @@ class _HomeState extends State<Home> {
                   onPressed: link.online ? () => _newSession() : null,
                 ),
               ]),
+              ListTile(
+                dense: true,
+                selected: _recent,
+                leading: const Icon(Icons.history_rounded),
+                title: const Text('Recent sessions', style: TextStyle(fontSize: 14.5)),
+                onTap: _showRecent,
+              ),
               if (all.isEmpty && terms.synced)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
