@@ -14,6 +14,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -29,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,6 +60,13 @@ type room struct {
 type hub struct {
 	mu    sync.Mutex
 	rooms map[string]*room
+
+	// Agent connections must present the room's key. The first key seen for
+	// a room claims it (sha256 kept in claimsPath), so knowing a room id from
+	// a pairing code is enough to reach the Mac but not to stand in for it.
+	claimsMu   sync.Mutex
+	claims     map[string]string // room -> hex sha256(key)
+	claimsPath string
 
 	limMu sync.Mutex
 	lims  map[string]*rate.Limiter
@@ -104,6 +113,61 @@ func (h *hub) allow(ip string) bool {
 
 func short(id string) string { return id[:6] }
 
+func loadClaims(path string) map[string]string {
+	m := map[string]string{}
+	if b, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(b, &m); err != nil {
+			log.Fatalf("claims: %v", err)
+		}
+	}
+	return m
+}
+
+var keyRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// owns reports whether the request carries the room's agent key, claiming
+// the room for that key if nobody has yet.
+func (h *hub) owns(id string, r *http.Request) bool {
+	key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || !keyRe.MatchString(key) {
+		return false
+	}
+	s := sha256.Sum256([]byte(key))
+	sum := hex.EncodeToString(s[:])
+	h.claimsMu.Lock()
+	defer h.claimsMu.Unlock()
+	if have, ok := h.claims[id]; ok {
+		return subtle.ConstantTimeCompare([]byte(have), []byte(sum)) == 1
+	}
+	if len(h.claims) >= 100000 {
+		return false
+	}
+	h.claims[id] = sum
+	b, _ := json.MarshalIndent(h.claims, "", " ")
+	tmp := h.claimsPath + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil || os.Rename(tmp, h.claimsPath) != nil {
+		log.Printf("claims: cannot save: %v", err)
+		delete(h.claims, id)
+		return false
+	}
+	log.Printf("room claimed room=%s ip=%s", short(id), clientIP(r))
+	return true
+}
+
+// agentGate is gate plus the room key check for the agent's endpoints.
+func (h *hub) agentGate(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id, ok := h.gate(w, r)
+	if !ok {
+		return "", false
+	}
+	if !h.owns(id, r) {
+		log.Printf("agent refused room=%s ip=%s", short(id), clientIP(r))
+		http.Error(w, "not this room's agent", http.StatusForbidden)
+		return "", false
+	}
+	return id, true
+}
+
 // keepalive pings c until it fails and keeps its read deadline fresh.
 func keepalive(c *websocket.Conn, done <-chan struct{}) {
 	c.SetReadDeadline(time.Now().Add(readTimeout))
@@ -143,7 +207,7 @@ func (h *hub) gate(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // agent is the Mac's long-lived control connection for a room.
 func (h *hub) agent(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.gate(w, r)
+	id, ok := h.agentGate(w, r)
 	if !ok {
 		return
 	}
@@ -240,7 +304,7 @@ func (h *hub) phone(w http.ResponseWriter, r *http.Request) {
 
 // accept is the agent dialing back for one phone connection.
 func (h *hub) accept(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.gate(w, r)
+	id, ok := h.agentGate(w, r)
 	if !ok {
 		return
 	}
@@ -361,7 +425,8 @@ func main() {
 		return
 	}
 
-	h := &hub{rooms: map[string]*room{}, lims: map[string]*rate.Limiter{}}
+	cp := filepath.Join(*data, "claims.json")
+	h := &hub{rooms: map[string]*room{}, lims: map[string]*rate.Limiter{}, claims: loadClaims(cp), claimsPath: cp}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/agent", h.agent)
 	mux.HandleFunc("/v1/phone", h.phone)

@@ -297,6 +297,12 @@ func cmdServe() {
 	if err != nil {
 		die("%v", err)
 	}
+	if c.RoomKey == "" { // configs from before the relay checked agents
+		c.RoomKey = randHex(32)
+		if err := c.save(); err != nil {
+			die("%v", err)
+		}
+	}
 	st, _ := os.Stat(configPath())
 	a := &Agent{cfg: c, cfgMtime: st.ModTime(), host: computerName(), terms: newTerms(), sessions: map[*Session]struct{}{}}
 	if c.KeepAwake {

@@ -22,6 +22,9 @@ const ringKeep = 1 << 20
 type Term struct {
 	ID      uint32
 	Created time.Time
+	Kind    string // "claude" or "shell"; the phone groups terminals by Session
+	Session string
+	Dir     string
 
 	mu      sync.Mutex
 	title   string
@@ -39,17 +42,20 @@ type Term struct {
 }
 
 type TermInfo struct {
-	ID    uint32 `json:"id"`
-	Title string `json:"title"`
-	Cols  uint16 `json:"cols"`
-	Rows  uint16 `json:"rows"`
-	End   int64  `json:"end"`
+	ID      uint32 `json:"id"`
+	Title   string `json:"title"`
+	Cols    uint16 `json:"cols"`
+	Rows    uint16 `json:"rows"`
+	End     int64  `json:"end"`
+	Kind    string `json:"kind,omitempty"`
+	Session string `json:"session,omitempty"`
+	Dir     string `json:"dir"`
 }
 
 func (t *Term) info() TermInfo {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return TermInfo{t.ID, t.title, t.cols, t.rows, t.end}
+	return TermInfo{t.ID, t.title, t.cols, t.rows, t.end, t.Kind, t.Session, t.Dir}
 }
 
 func (t *Term) append(p []byte) {
@@ -170,8 +176,9 @@ func shellEnv() []string {
 	return env
 }
 
-// open starts a login shell in dir on a fresh pty.
-func (m *Terms) open(dir string, cols, rows uint16) (*Term, error) {
+// open starts a login shell in dir on a fresh pty. A non-empty run is typed
+// into it as the first command, so quitting that program leaves the shell.
+func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (*Term, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/zsh"
@@ -189,8 +196,12 @@ func (m *Terms) open(dir string, cols, rows uint16) (*Term, error) {
 	m.mu.Lock()
 	m.next++
 	id := m.next
-	t := &Term{ID: id, Created: time.Now(), changed: make(chan struct{}), cols: cols, rows: rows, pty: f, cmd: cmd, in: make(chan []byte, 1024)}
+	t := &Term{ID: id, Created: time.Now(), Kind: kind, Session: session, Dir: dir, changed: make(chan struct{}), cols: cols, rows: rows, pty: f, cmd: cmd, in: make(chan []byte, 1024)}
 	t.title = shell[strings.LastIndex(shell, "/")+1:]
+	if run != "" {
+		t.title = strings.Fields(run)[0]
+		t.in <- []byte(run + "\r")
+	}
 	m.terms[id] = t
 	m.mu.Unlock()
 

@@ -20,10 +20,11 @@ type Device struct {
 }
 
 type Config struct {
-	Relay     string   `json:"relay"` // host:port
-	Pin       string   `json:"pin"`   // sha256 of the relay's certificate (hex)
-	Room      string   `json:"room"`  // 32 random bytes (hex); the relay's meeting point
-	Priv      string   `json:"priv"`  // the Mac's Noise static key (hex)
+	Relay     string   `json:"relay"`   // host:port
+	Pin       string   `json:"pin"`     // sha256 of the relay's certificate (hex)
+	Room      string   `json:"room"`    // 32 random bytes (hex); the relay's meeting point
+	RoomKey   string   `json:"roomKey"` // proves to the relay that this Mac owns Room (never in pairing codes)
+	Priv      string   `json:"priv"`    // the Mac's Noise static key (hex)
 	Pub       string   `json:"pub"`
 	Devices   []Device `json:"devices"`
 	Roots     []string `json:"roots"`     // folders the file browser may touch
@@ -113,6 +114,7 @@ func newConfig(relay, pin string) (*Config, error) {
 		Relay:     relay,
 		Pin:       pin,
 		Room:      randHex(32),
+		RoomKey:   randHex(32),
 		Priv:      hex.EncodeToString(k.Private),
 		Pub:       hex.EncodeToString(k.Public),
 		Roots:     []string{home},

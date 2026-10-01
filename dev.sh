@@ -43,6 +43,7 @@ quiet() { # quiet name cmd… → one line, full log on failure
 
 cmd_go-check() {
   quiet go-tidy gorun linux arm64 go mod tidy
+  quiet go-fmt gorun linux arm64 gofmt -l -w cmd
   quiet go-vet-linux gorun linux arm64 go vet ./...
   quiet go-vet-darwin gorun darwin arm64 go vet ./cmd/macremote
   quiet go-test gorun linux arm64 go test ./...

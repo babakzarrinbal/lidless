@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -124,6 +125,11 @@ func (a *Agent) dialer() *websocket.Dialer {
 	}
 }
 
+// agentHeader carries the room key; only the agent's own connections send it.
+func (a *Agent) agentHeader() http.Header {
+	return http.Header{"Authorization": {"Bearer " + a.config().RoomKey}}
+}
+
 func (a *Agent) url(path string, extra url.Values) string {
 	c := a.config()
 	q := url.Values{"room": {c.Room}}
@@ -137,7 +143,7 @@ func (a *Agent) url(path string, extra url.Values) string {
 func (a *Agent) run() {
 	backoff := time.Second
 	for {
-		c, _, err := a.dialer().Dial(a.url("/v1/agent", nil), nil)
+		c, _, err := a.dialer().Dial(a.url("/v1/agent", nil), a.agentHeader())
 		if err != nil {
 			logf("relay: %v (retry in %s)", err, backoff)
 			time.Sleep(backoff)
@@ -170,7 +176,7 @@ func (a *Agent) run() {
 }
 
 func (a *Agent) accept(cid, ip string) {
-	c, _, err := a.dialer().Dial(a.url("/v1/accept", url.Values{"cid": {cid}}), nil)
+	c, _, err := a.dialer().Dial(a.url("/v1/accept", url.Values{"cid": {cid}}), a.agentHeader())
 	if err != nil {
 		logf("accept: %v", err)
 		return
@@ -497,16 +503,19 @@ func (s *Session) detach(id uint32) {
 
 func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 	var p struct {
-		ID    uint32 `json:"id"`
-		From  int64  `json:"from"`
-		Cols  uint16 `json:"cols"`
-		Rows  uint16 `json:"rows"`
-		Dir   string `json:"dir"`
-		Title string `json:"title"`
-		Path  string `json:"path"`
-		To    string `json:"to"`
-		Text  string `json:"text"`
-		Mtime int64  `json:"mtime"`
+		ID      uint32 `json:"id"`
+		From    int64  `json:"from"`
+		Cols    uint16 `json:"cols"`
+		Rows    uint16 `json:"rows"`
+		Dir     string `json:"dir"`
+		Title   string `json:"title"`
+		Path    string `json:"path"`
+		To      string `json:"to"`
+		Text    string `json:"text"`
+		Mtime   int64  `json:"mtime"`
+		Kind    string `json:"kind"`
+		Session string `json:"session"`
+		Cmd     string `json:"cmd"`
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -534,7 +543,10 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			}
 			dir = d
 		}
-		t, err := s.a.terms.open(dir, p.Cols, p.Rows)
+		if len(p.Session) > 64 || len(p.Kind) > 16 || len(p.Cmd) > 4096 || strings.ContainsAny(p.Cmd, "\r\n") {
+			return nil, &rpcError{"bad", "bad terminal options"}
+		}
+		t, err := s.a.terms.open(dir, p.Cols, p.Rows, p.Kind, p.Session, strings.TrimSpace(p.Cmd))
 		if err != nil {
 			return nil, err
 		}
