@@ -40,7 +40,16 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export PATH="$HOME/tools/flutter/bin:/opt/homebrew/bin:$PATH"
 # The Samsung's wireless adb port changes on every reconnect: take whichever is attached.
-samsung() { adb devices 2>/dev/null | awk '/^192\.168\.2\.118:[0-9]+\tdevice/ {print $1; exit}'; }
+# Not attached: connect to the ports it advertises over mDNS (Wireless debugging on).
+samsung() {
+  local s; s=$(adb devices 2>/dev/null | awk '/^192\.168\.2\.118:[0-9]+\tdevice/ {print $1; exit}')
+  if [ -z "$s" ] && command -v adb >/dev/null; then
+    for p in $(adb mdns services 2>/dev/null | awk '/_adb-tls-connect.*192\.168\.2\.118:/ {print $NF}'); do
+      adb connect "$p" 2>/dev/null | grep -q '^connected' && { s=$p; break; }
+    done
+  fi
+  echo "$s"
+}
 export ANDROID_SERIAL=${ANDROID_SERIAL:-$(samsung)}
 APP_ID=org.zarrinbal.macremote
 LOGS=$ROOT/build/logs
