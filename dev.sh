@@ -8,6 +8,7 @@
 #   ./dev.sh mac-kit               build/MacRemote.zip: agent + install.sh for another Mac
 #   ./dev.sh brew [version]        build/brew/: release tarballs + Homebrew formula (BREW_URL=… where they'll be hosted)
 #   ./dev.sh brew-test             install that formula from a local tap, check it, remove it
+#   ./dev.sh brew-publish [version] build, then a GitHub release + the formula in the tap ($BREW_OWNER/homebrew-macremote, via gh)
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
 #   ./dev.sh relay-pin             print the relay certificate pin
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
@@ -24,6 +25,8 @@ ROOT=$PWD
 
 BOX=root@your.server
 RELAY_PORT=8460
+BREW_OWNER=${BREW_OWNER:-babakzarrinbal}
+BREW_TAP=$BREW_OWNER/homebrew-macremote
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export PATH="$HOME/tools/flutter/bin:/opt/homebrew/bin:$PATH"
@@ -89,7 +92,7 @@ EOF
 
 cmd_brew() {
   local v=${1:-$(date +%Y.%m.%d)} out=build/brew pin
-  local url=${BREW_URL:-https://github.com/OWNER/homebrew-macremote/releases/download/v$v}
+  local url=${BREW_URL:-https://github.com/$BREW_TAP/releases/download/v$v}
   pin=$(cmd_relay-pin)
   rm -rf "$out" && mkdir -p "$out"
   local flags="-s -X main.defaultRelay=your.server:$RELAY_PORT -X main.defaultPin=$pin"
@@ -101,11 +104,11 @@ cmd_brew() {
   done
   sha_arm=$(shasum -a 256 "$out/macremote-$v-darwin-arm64.tar.gz" | cut -d' ' -f1)
   sha_intel=$(shasum -a 256 "$out/macremote-$v-darwin-amd64.tar.gz" | cut -d' ' -f1)
-  python3 - "$v" "$url" "$sha_arm" "$sha_intel" <<'PY' > "$out/macremote.rb"
+  python3 - "$v" "$url" "$sha_arm" "$sha_intel" "https://github.com/$BREW_TAP" <<'PY' > "$out/macremote.rb"
 import sys
-v, url, arm, intel = sys.argv[1:]
+v, url, arm, intel, home = sys.argv[1:]
 t = open("packaging/homebrew/macremote.rb.in").read()
-for k, x in {"@VERSION@": v, "@URL_ARM@": f"{url}/macremote-{v}-darwin-arm64.tar.gz", "@SHA_ARM@": arm,
+for k, x in {"@VERSION@": v, "@HOMEPAGE@": home, "@URL_ARM@": f"{url}/macremote-{v}-darwin-arm64.tar.gz", "@SHA_ARM@": arm,
              "@URL_INTEL@": f"{url}/macremote-{v}-darwin-amd64.tar.gz", "@SHA_INTEL@": intel}.items():
     assert k in t, k
     t = t.replace(k, x)
@@ -128,6 +131,23 @@ cmd_brew-test() { # a throwaway local tap with file:// URLs; leaves nothing behi
   brew untap "$tap" >/dev/null 2>&1 || true
   brew developer off >/dev/null 2>&1 || true # tap-new turned it on
   return $rc
+}
+
+cmd_brew-publish() { # the official tap: tarballs on a release, the formula in Formula/
+  local v=${1:-$(date +%Y.%m.%d)} f=Formula/macremote.rb sha
+  gh repo view "$BREW_TAP" >/dev/null 2>&1 ||
+    gh repo create "$BREW_TAP" --public -d "Homebrew tap for Mac Remote: your Mac's terminals, files and Claude Code on your phone" >/dev/null
+  cmd_brew "$v"
+  # The formula first: a release needs a commit to tag, and a new tap has none.
+  sha=$(gh api "repos/$BREW_TAP/contents/$f" -q .sha 2>/dev/null || true)
+  gh api -X PUT "repos/$BREW_TAP/contents/$f" -f message="macremote $v" \
+    -f content="$(base64 < build/brew/macremote.rb | tr -d '\n')" ${sha:+-f sha="$sha"} >/dev/null
+  if gh release view "v$v" -R "$BREW_TAP" >/dev/null 2>&1; then
+    gh release upload "v$v" -R "$BREW_TAP" --clobber build/brew/*.tar.gz
+  else
+    gh release create "v$v" -R "$BREW_TAP" -t "macremote $v" -n "brew install $BREW_OWNER/macremote/macremote" build/brew/*.tar.gz >/dev/null
+  fi
+  echo "  published v$v: brew install $BREW_OWNER/macremote/macremote"
 }
 
 cmd_relay-pin() { ssh "$BOX" docker exec macremote-relay /relay pin; }
@@ -181,4 +201,4 @@ cmd_pair-adb() {
 cmd_log() { tail -n 40 "$HOME/Library/Logs/macremote.log"; }
 
 cmd=${1:-help}; shift || true
-if declare -f "cmd_$cmd" >/dev/null; then "cmd_$cmd" "$@"; else sed -n '2,20p' "$0"; fi
+if declare -f "cmd_$cmd" >/dev/null; then "cmd_$cmd" "$@"; else sed -n '2,/^set /p' "$0" | grep '^#'; fi
