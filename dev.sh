@@ -5,6 +5,7 @@
 #   ./dev.sh go-check              go vet + tests (Docker)
 #   ./dev.sh agent                 build bin/macremote (darwin/arm64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
+#   ./dev.sh mac-kit               build/MacRemote.zip: agent + install.sh for another Mac
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
 #   ./dev.sh relay-pin             print the relay certificate pin
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
@@ -52,6 +53,34 @@ cmd_go-check() {
 cmd_agent() {
   quiet agent-build gorun darwin arm64 go build -trimpath -ldflags=-s -o bin/macremote ./cmd/macremote
   ls -la bin/macremote | awk '{print "bin/macremote", $5, "bytes"}'
+}
+
+# A zip for another Mac (no repo, Docker or Go there): both binaries and an
+# install script that inits against the relay, installs the LaunchAgent and
+# shows a pairing QR code.
+cmd_mac-kit() {
+  local kit=build/MacRemote pin
+  pin=$(cmd_relay-pin)
+  rm -rf "$kit" && mkdir -p "$kit"
+  quiet agent-arm64 gorun darwin arm64 go build -trimpath -ldflags=-s -o "$kit/macremote-arm64" ./cmd/macremote
+  quiet agent-amd64 gorun darwin amd64 go build -trimpath -ldflags=-s -o "$kit/macremote-x86_64" ./cmd/macremote
+  cat > "$kit/install.sh" <<EOF
+#!/bin/sh
+# Mac Remote agent: in Terminal run  sh ~/Downloads/MacRemote/install.sh
+set -e
+cd "\$(dirname "\$0")"
+bin=./macremote-\$(uname -m)
+xattr -c "\$bin" 2>/dev/null || true
+chmod +x "\$bin"
+[ -f "\$HOME/.config/macremote/agent.json" ] || "\$bin" init -relay your.server:$RELAY_PORT -pin $pin
+"\$bin" install
+mkdir -p "\$HOME/.local/bin"
+ln -sf "\$HOME/Library/Application Support/MacRemote/macremote" "\$HOME/.local/bin/macremote"
+echo; echo "Installed. Scan this code with the Mac Remote app (Pair another Mac):"; echo
+"\$HOME/Library/Application Support/MacRemote/macremote" pair
+EOF
+  (cd build && rm -f MacRemote.zip && zip -qr MacRemote.zip MacRemote)
+  ls -la build/MacRemote.zip | awk '{print "build/MacRemote.zip", $5, "bytes"}'
 }
 
 cmd_relay-pin() { ssh "$BOX" docker exec macremote-relay /relay pin; }
