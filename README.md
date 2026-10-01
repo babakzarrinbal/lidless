@@ -42,6 +42,12 @@ connected at a time, and terminals keep running on a Mac while another is open.
 All of a session's terminals carry its id on the Mac (`term.open` `session`,
 `kind`), so the list survives the app being closed.
 
+Shells: a Mac's default shell for new terminals is set in the drawer's
+**Manage Macs** page (from the Mac's `/etc/shells`, else its login shell). One
+terminal can use another: long-press **+** in the shell tabs, or tap the shell
+button next to **Start** on the New session page. Manage Macs also renames
+(a nickname on the phone) and removes paired Macs.
+
 Copilot is started as `copilot` from a login shell: `~/.local/bin/copilot`
 links to VS Code's Copilot CLI shim.
 
@@ -50,6 +56,8 @@ and `app/lib/net/link.dart`.
 
 ## Commands
 
+Working on it: [AGENTS.md](AGENTS.md) (notes for coding agents and humans) and
+[docs/dev-setup.md](docs/dev-setup.md) (a new Mac; `./dev.sh doctor` checks it).
 `./dev.sh` lists everything. Common ones:
 
 - `./dev.sh agent-install` — build the agent, init it against the relay, install
@@ -63,6 +71,9 @@ and `app/lib/net/link.dart`.
 
 ## On the Mac
 
+- One agent per Mac: either the brew service or the LaunchAgent
+  (`macremote install`), never both. A second copy waits for the first one,
+  and `macremote status` shows which one runs.
 - macOS shows a "background item added" notice once for the LaunchAgent.
 - Desktop/Documents/Downloads need Full Disk Access for the agent binary
   (`~/Library/Application Support/MacRemote/macremote`) in System Settings →

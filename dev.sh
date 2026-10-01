@@ -2,6 +2,7 @@
 # Mac Remote dev harness. Go builds run in Docker (no Go on the host);
 # the Flutter app uses ~/tools/flutter. Full logs go to build/logs/.
 #
+#   ./dev.sh doctor                is this Mac ready? (tools, untracked files, box ssh; docs/dev-setup.md)
 #   ./dev.sh go-check              go vet + tests (Docker)
 #   ./dev.sh agent                 build bin/macremote (darwin/arm64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
@@ -55,6 +56,27 @@ quiet() { # quiet name cmd… → one line, full log on failure
   local name=$1; shift
   local log=$LOGS/$name.log
   if "$@" >"$log" 2>&1; then echo "PASS $name"; else echo "FAIL $name (log: $log)"; tail -n 30 "$log"; return 1; fi
+}
+
+cmd_doctor() { # read-only; prints OK/MISSING per item, never a secret's value
+  local bad=0
+  chk() { if eval "$2" >/dev/null 2>&1; then echo "OK      $1"; else echo "MISSING $1  → $3"; bad=1; fi; }
+  chk docker "docker info" "start Docker Desktop (brew install --cask docker)"
+  chk flutter "[ -x $HOME/tools/flutter/bin/flutter ]" "git clone -b stable https://github.com/flutter/flutter.git ~/tools/flutter"
+  chk java17 "[ -d $JAVA_HOME ]" "brew install --cask temurin@17"
+  chk android-sdk "[ -d $ANDROID_HOME/platforms ]" "brew install --cask android-commandlinetools, then sdkmanager (docs/dev-setup.md)"
+  chk adb "command -v adb" "brew install --cask android-platform-tools"
+  chk gh "gh auth status" "brew install gh && gh auth login"
+  chk jq "command -v jq" "brew install jq"
+  chk debug-keystore "[ -f $HOME/.android/debug.keystore ]" "copy ~/.android/debug.keystore from the old Mac (APK signing)"
+  chk .server.env "[ -n '$RELAY_HOST' ]" "copy .server.env from the old Mac"
+  [ -n "$RELAY_HOST" ] && chk box-ssh "ssh -o BatchMode=yes -o ConnectTimeout=5 $BOX true" "add this Mac's ssh key on the box (docs/dev-setup.md)"
+  local la=no bs=no
+  launchctl print "gui/$(id -u)/org.zarrinbal.macremote" >/dev/null 2>&1 && la=yes
+  launchctl print "gui/$(id -u)/homebrew.mxcl.macremote" >/dev/null 2>&1 && bs=yes
+  echo "agent   LaunchAgent=$la brew-service=$bs$([ $la$bs = yesyes ] && echo '  ← TWO copies: keep one (AGENTS.md)')"
+  echo "phones  $(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" {printf "%s ", $1}')"
+  return $bad
 }
 
 cmd_go-check() {
