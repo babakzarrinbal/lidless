@@ -181,14 +181,14 @@ cmd_site-build() {
   [ -f "$apk" ] || cmd_apk
   rm -rf "$out" && mkdir -p "$out" && cp site/* "$out/" && cp "$apk" "$out/lidless.apk"
   python3 - "$out/index.html" "$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)" \
-    "$(awk '{printf "%.0f", $1/1048576}' <<<"$(stat -f%z "$apk")")" "$(shasum -a 256 "$apk" | cut -d' ' -f1)" \
-    "your.server:$RELAY_PORT" "$(cmd_relay-pin)" <<'PY'
+    "$(awk '{printf "%.0f", $1/1048576}' <<<"$(stat -f%z "$apk")")" "$(shasum -a 256 "$apk" | cut -d' ' -f1)" <<'PY'
 import sys
 p, *v = sys.argv[1:]
 t = open(p).read()
-for k, x in zip(["@VERSION@", "@SIZE_MB@", "@SHA256@", "@RELAY@", "@PIN@"], v):
+for k, x in zip(["@VERSION@", "@SIZE_MB@", "@SHA256@"], v):
     assert k in t and x, k
     t = t.replace(k, x)
+assert "your.server" not in t and "@" + "RELAY" not in t, "server address in the page"
 open(p, "w").write(t)
 PY
   echo "build/site: $(ls "$out" | tr '\n' ' ')"

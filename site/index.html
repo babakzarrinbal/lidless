@@ -240,8 +240,8 @@ footer code { word-break: break-all; color: var(--fg); }
         <h3>Install the agent on your Mac</h3>
         <p>In Terminal, run:</p>
         <div class="term"><span class="p">$ </span>brew install babakzarrinbal/macremote/macremote
-<span class="p">$ </span>macremote setup @RELAY@ -pin @PIN@<button class="copy">copy</button></div>
-        <p>That points it at the relay, checks the relay's certificate, and starts the agent now and at every login.</p>
+<span class="p">$ </span>macremote setup <i>your.server</i>:8460<button class="copy">copy</button></div>
+        <p>Use the address of your relay. <code>setup</code> shows the relay's certificate pin to compare with the server, then starts the agent now and at every login.</p>
       </div></div>
       <div class="step"><div>
         <h3>Scan and go</h3>
