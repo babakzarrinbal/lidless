@@ -120,11 +120,10 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
   ```
 - Brew service log: `/opt/homebrew/var/log/macremote.log` (`./dev.sh log`
   reads the LaunchAgent's).
-- **Shared terminals (holders, 20eb94e..b8cd64b) are committed, not released.**
-  Not yet in brew, so the other Mac still runs the pre-holder agent. This
-  Mac switches with `./dev.sh agent-install`, which ends the terminals of the
-  old agent once. Then the phones need `./dev.sh install`. After the switch,
-  check that a second `agent-install` keeps the holders, and that a `claude`
-  started in a laptop window shows up on the phones.
+- **Shared terminals (holders) run on this Mac and the phones, not yet in
+  brew.** An `agent-install` kept all holders. The other Mac still runs the
+  pre-holder agent until `./dev.sh brew-publish 2026.10.01.4` and a
+  `brew upgrade` there. Still to check on a phone: a `claude` started in a
+  laptop window shows up within a second.
 - Phones run app 0.2.0 built from 96e4b9d. Still to check on a phone: the
   Recent page right after opening a Mac.
