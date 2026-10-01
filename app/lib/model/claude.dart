@@ -13,10 +13,12 @@ class Conversation {
         running = m['running'] == true,
         term = ((m['term'] as num?) ?? 0).toInt(),
         dir = m['dir'] as String? ?? '',
-        tool = m['tool'] as String? ?? 'claude';
+        tool = m['tool'] as String? ?? 'claude',
+        model = m['model'] as String? ?? '';
   final String id, title, prompt;
   final String tool; // the agent that had it: claude, copilot, or vscode (read only)
   final String dir; // the folder (the recent list only)
+  final String model; // a VS Code chat's last model (copilot/auto, claude-opus-4.8…)
   final DateTime mtime;
   final int size;
   final bool running; // its agent has it open on the Mac

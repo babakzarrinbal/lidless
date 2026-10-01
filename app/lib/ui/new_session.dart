@@ -6,6 +6,7 @@ import '../model/terms.dart';
 import '../net/link.dart';
 import 'files_panel.dart';
 import 'shells.dart';
+import 'logos.dart';
 import 'theme.dart';
 
 const _flagChips = {
@@ -235,8 +236,8 @@ class _NewSessionPageState extends State<NewSessionPage> {
         SegmentedButton<String>(
           showSelectedIcon: false,
           segments: const [
-            ButtonSegment(value: 'claude', label: Text('Claude'), icon: Icon(Icons.auto_awesome_rounded, size: 17)),
-            ButtonSegment(value: 'copilot', label: Text('Copilot'), icon: Icon(Icons.flight_rounded, size: 17)),
+            ButtonSegment(value: 'claude', label: Text('Claude'), icon: ToolLogo('claude', size: 17)),
+            ButtonSegment(value: 'copilot', label: Text('Copilot'), icon: ToolLogo('copilot', size: 17)),
             ButtonSegment(value: 'cli', label: Text('Terminal'), icon: Icon(Icons.terminal_rounded, size: 17)),
           ],
           selected: {_tool},

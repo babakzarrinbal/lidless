@@ -11,6 +11,7 @@ import '../model/chat.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import 'new_session.dart' show baseName;
+import 'logos.dart';
 import 'theme.dart';
 
 /// The agent's conversation the way the Claude app shows it: your messages,
@@ -247,7 +248,7 @@ class _TranscriptPageState extends State<TranscriptPage> {
           ),
           for (final t in const ['copilot', 'claude'])
             ListTile(
-              leading: Icon(toolIcon(t)),
+              leading: ToolLogo(t, size: 22),
               title: Text('Continue with ${tools[t]}'),
               onTap: () => Navigator.pop(ctx, t),
             ),

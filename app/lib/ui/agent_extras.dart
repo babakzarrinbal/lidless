@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../model/chat.dart';
 import '../model/claude.dart';
 import '../net/link.dart';
+import 'logos.dart';
 import 'theme.dart';
 
 /// How full Claude's context window is: a ring with the token count inside.
@@ -233,7 +234,7 @@ class UsageCard extends StatelessWidget {
         : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Icon(Icons.auto_awesome_rounded, size: 18, color: C.amber),
+        const ToolLogo('claude'),
         const SizedBox(width: 8),
         const Text('Claude', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
         if (u.plan.isNotEmpty) ...[
@@ -444,8 +445,7 @@ class _TokensCardState extends State<TokensCard> {
         InkWell(
           onTap: () => setState(() => open ? _open.remove(key) : _open.add(key)),
           child: Row(children: [
-            Icon(a.tool == 'copilot' ? Icons.code_rounded : Icons.auto_awesome_rounded,
-                size: 16, color: a.tool == 'copilot' ? C.violet : C.amber),
+            ToolLogo(a.tool, size: 16),
             const SizedBox(width: 8),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

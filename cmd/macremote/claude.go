@@ -32,10 +32,11 @@ type Conversation struct {
 	Prompt  string `json:"prompt,omitempty"` // the last thing typed
 	Mtime   int64  `json:"mtime"`
 	Size    int64  `json:"size"`
-	Tool    string `json:"tool,omitempty"` // "copilot"; Claude's leave it out
-	Running bool   `json:"running"`        // a Claude process has it open
-	Term    uint32 `json:"term,omitempty"` // …in this agent's terminal
-	Dir     string `json:"dir,omitempty"`  // the folder it ran in (recent list only)
+	Tool    string `json:"tool,omitempty"`  // "copilot"; Claude's leave it out
+	Running bool   `json:"running"`         // a Claude process has it open
+	Term    uint32 `json:"term,omitempty"`  // …in this agent's terminal
+	Dir     string `json:"dir,omitempty"`   // the folder it ran in (recent list only)
+	Model   string `json:"model,omitempty"` // a VS Code chat's last model
 	path    string
 }
 

@@ -15,6 +15,7 @@ import 'files_panel.dart';
 import 'macs.dart';
 import 'new_session.dart';
 import 'session_view.dart';
+import 'logos.dart';
 import 'theme.dart';
 import 'workspaces.dart';
 
@@ -706,7 +707,7 @@ class _HomeState extends State<Home> {
             child: Row(children: [
               StatusDot(s.activity, size: StatusDot.row),
               const SizedBox(width: 10),
-              Icon(toolIcon(s.tool), size: 18, color: sel ? C.accent : C.dim),
+              ToolLogo(s.tool),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName,

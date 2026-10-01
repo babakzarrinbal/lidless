@@ -163,7 +163,7 @@ func vscodeTyped(r map[string]any) string {
 	return strings.TrimSpace(s)
 }
 
-// vscodeTitles caches each file's title and last prompt by its size and
+// vscodeTitles caches each file's title, last prompt and model by its size and
 // time: a folder can have hundreds of chats, some of them megabytes.
 var vscodeTitles = struct {
 	sync.Mutex
@@ -171,16 +171,16 @@ var vscodeTitles = struct {
 }{m: map[string]vscodeTitle{}}
 
 type vscodeTitle struct {
-	mtime, size   int64
-	title, prompt string
+	mtime, size          int64
+	title, prompt, model string
 }
 
-func vscodeTitleOf(c *Conversation) (title, prompt string) {
+func vscodeTitleOf(c *Conversation) (title, prompt, model string) {
 	vscodeTitles.Lock()
 	t, ok := vscodeTitles.m[c.path]
 	vscodeTitles.Unlock()
 	if ok && t.mtime == c.Mtime && t.size == c.Size {
-		return t.title, t.prompt
+		return t.title, t.prompt, t.model
 	}
 	t = vscodeTitle{mtime: c.Mtime, size: c.Size}
 	if m, err := vscodeState(c.path); err == nil {
@@ -192,6 +192,9 @@ func vscodeTitleOf(c *Conversation) (title, prompt string) {
 				}
 				t.prompt = p
 			}
+			if s, _ := r["modelId"].(string); s != "" {
+				t.model = s
+			}
 		}
 		if s, _ := m["customTitle"].(string); strings.TrimSpace(s) != "" {
 			t.title = s
@@ -201,7 +204,7 @@ func vscodeTitleOf(c *Conversation) (title, prompt string) {
 	vscodeTitles.Lock()
 	vscodeTitles.m[c.path] = t
 	vscodeTitles.Unlock()
-	return t.title, t.prompt
+	return t.title, t.prompt, t.model
 }
 
 // vscodeConversations lists VS Code's chats newest first, at most n of those
@@ -228,7 +231,7 @@ func vscodeConversations(n int, keep func(*Conversation) bool) []Conversation {
 		if keep != nil && !keep(&c) {
 			continue
 		}
-		c.Title, c.Prompt = vscodeTitleOf(&c)
+		c.Title, c.Prompt, c.Model = vscodeTitleOf(&c)
 		if c.Title == "" {
 			continue // nothing said yet
 		}

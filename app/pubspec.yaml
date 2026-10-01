@@ -21,6 +21,7 @@ dependencies:
   re_highlight: ^0.0.3
   shared_preferences: ^2.5.5
   xterm: ^4.0.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:

@@ -8,6 +8,7 @@ import '../model/claude.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import 'new_session.dart';
+import 'logos.dart';
 import 'theme.dart';
 
 /// The drawer's sessions by folder: the ones open on the phone, then Claude's
@@ -198,7 +199,7 @@ class _WorkspaceListState extends State<WorkspaceList> {
           child: Row(children: [
             StatusDot(_activity(c), size: StatusDot.row),
             const SizedBox(width: 10),
-            Icon(toolIcon(c.tool), size: 15, color: C.dim),
+            ToolLogo(c.tool, model: c.model, size: 15),
             const SizedBox(width: 8),
             Expanded(
               child: Text(c.title.isEmpty ? '(untitled)' : c.title,
@@ -427,7 +428,7 @@ class _RecentListState extends State<RecentList> {
         child: Row(children: [
           StatusDot(_activity(c), size: StatusDot.row),
           const SizedBox(width: 10),
-          Icon(toolIcon(c.tool), size: 17, color: C.dim),
+          ToolLogo(c.tool, model: c.model, size: 17),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
