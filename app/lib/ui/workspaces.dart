@@ -303,6 +303,7 @@ class _RecentListState extends State<RecentList> {
 
   bool _failed = false;
   int _tries = 0;
+  String? _error; // why the last fetch failed, shown with a retry
 
   void _online() {
     if ((_list == null || _failed) && widget.link.online) _fetch();
@@ -317,11 +318,20 @@ class _RecentListState extends State<RecentList> {
       if (!mounted) return;
       _seen.listed(list, openTerms(widget.sessions));
       _failed = false;
-      setState(() => _list = list);
-    } catch (_) {
-      // An older agent, or the link just came up: show none, ask again a few times.
+      _tries = 0;
+      setState(() {
+        _list = list;
+        _error = null;
+      });
+    } catch (e) {
+      // An older agent, or the link just came up: say why, ask again a few times.
       _failed = true;
-      if (mounted && _list == null) setState(() => _list = const []);
+      if (mounted) {
+        setState(() {
+          _list ??= const [];
+          _error = e is RpcError ? e.message : '$e';
+        });
+      }
       if (mounted && widget.load == null && ++_tries < 5) Timer(const Duration(seconds: 3), _online);
     } finally {
       _busy = false;
@@ -350,7 +360,10 @@ class _RecentListState extends State<RecentList> {
           onPressed: _fetch,
         ),
       ]),
-      if (list.isEmpty) const Text('No Claude conversations in the shared folders yet.', style: TextStyle(color: C.dim)),
+      if (_error != null)
+        Text('Couldn\'t load them: $_error', style: const TextStyle(color: C.red))
+      else if (list.isEmpty)
+        const Text('No conversations in the shared folders yet.', style: TextStyle(color: C.dim)),
       for (final c in today) _tile(c),
       if (old.isNotEmpty) ...[
         InkWell(

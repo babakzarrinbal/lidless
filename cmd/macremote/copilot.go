@@ -10,8 +10,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -59,6 +61,59 @@ func copilotRunning() map[string]int {
 		}
 	}
 	return out
+}
+
+// copilotBin finds the real Copilot CLI on the login shell's PATH. VS Code's
+// Copilot Chat puts a "copilot" shim on PATH (often ~/.local/bin, ahead of
+// Homebrew) that strips only its own folder from PATH and runs "copilot"
+// again: when it finds itself (a symlink to it, say) it starts itself until
+// the Mac runs out of processes.
+func copilotBin(shell string) (string, error) {
+	out, _ := exec.Command(shell, "-l", "-c", "which -a copilot").Output()
+	shims := 0
+	for _, p := range strings.Split(string(out), "\n") {
+		if p = strings.TrimSpace(p); !filepath.IsAbs(p) {
+			continue
+		}
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			continue
+		}
+		if copilotShim(real) {
+			shims++
+			continue
+		}
+		return p, nil
+	}
+	if shims > 0 {
+		return "", errors.New("only VS Code's copilot shim is on this Mac's PATH, and it loops; install the Copilot CLI: brew install copilot-cli")
+	}
+	return "", errors.New("GitHub Copilot CLI is not installed on this Mac: brew install copilot-cli")
+}
+
+func copilotShim(path string) bool {
+	return strings.Contains(path, "github.copilot-chat") || strings.Contains(path, "/copilotCli/")
+}
+
+// copilotCommand swaps the bare "copilot" at the start of run for the real
+// CLI's path.
+func copilotCommand(shell, run string) (string, error) {
+	name, rest, _ := strings.Cut(run, " ")
+	if name != "copilot" {
+		return run, nil
+	}
+	bin, err := copilotBin(shell)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(shellQuote(bin) + " " + rest), nil
+}
+
+func shellQuote(s string) string {
+	if !strings.ContainsAny(s, " '\"\\$`!*?&;|<>()[]{}#~") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // copilotCwd is the folder a session ran in, from its workspace.yaml.

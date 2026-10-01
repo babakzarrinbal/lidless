@@ -63,3 +63,29 @@ func TestCopilotConversations(t *testing.T) {
 		t.Fatalf("other folder: got %+v", l)
 	}
 }
+
+func TestCopilotCommand(t *testing.T) {
+	home := t.TempDir()
+	shim := filepath.Join(home, "Library/Application Support/Code/User/globalStorage/github.copilot-chat/copilotCli/copilot")
+	os.MkdirAll(filepath.Dir(shim), 0o755)
+	os.WriteFile(shim, []byte("#!/bin/sh\n"), 0o755)
+	local, brew := filepath.Join(home, "local"), filepath.Join(home, "brew dir")
+	os.MkdirAll(local, 0o755)
+	os.MkdirAll(brew, 0o755)
+	os.Symlink(shim, filepath.Join(local, "copilot"))
+	// A stand-in login shell whose PATH has the shim's symlink first.
+	sh := filepath.Join(home, "sh")
+	os.WriteFile(sh, []byte("#!/bin/sh\nshift 2\nPATH=\""+local+":"+brew+":/usr/bin:/bin\" exec /bin/sh -c \"$@\"\n"), 0o755)
+
+	if _, err := copilotCommand(sh, "copilot --continue"); err == nil || !strings.Contains(err.Error(), "shim") {
+		t.Fatalf("only the shim: got %v", err)
+	}
+	os.WriteFile(filepath.Join(brew, "copilot"), []byte("#!/bin/sh\n"), 0o755)
+	got, err := copilotCommand(sh, "copilot --resume abc")
+	if want := "'" + filepath.Join(brew, "copilot") + "' --resume abc"; err != nil || got != want {
+		t.Fatalf("got %q %v, want %q", got, err, want)
+	}
+	if got, _ := copilotCommand(sh, "claude --continue"); got != "claude --continue" {
+		t.Fatalf("not copilot: got %q", got)
+	}
+}

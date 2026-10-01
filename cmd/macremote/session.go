@@ -412,7 +412,11 @@ func (s *Session) handle(m []byte) {
 			return
 		}
 		go func() {
+			start := time.Now()
 			res, err := s.call(r.M, r.P)
+			if took := time.Since(start); err != nil || took > 3*time.Second {
+				logf("%s %s: %v in %s", s.device, r.M, err, took.Round(time.Millisecond))
+			}
 			if err != nil {
 				code := "error"
 				var re *rpcError

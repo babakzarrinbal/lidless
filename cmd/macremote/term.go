@@ -200,6 +200,13 @@ func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (
 	if cols == 0 || rows == 0 {
 		cols, rows = 80, 24
 	}
+	typed := run
+	if kind == "copilot" {
+		var err error
+		if typed, err = copilotCommand(shell, run); err != nil {
+			return nil, err
+		}
+	}
 	cmd := exec.Command(shell, "-l")
 	cmd.Env = shellEnv()
 	cmd.Dir = dir
@@ -215,7 +222,7 @@ func (m *Terms) open(dir string, cols, rows uint16, kind, session, run string) (
 	t.run = run
 	if run != "" {
 		t.title = strings.Fields(run)[0]
-		t.in <- []byte(run + "\r")
+		t.in <- []byte(typed + "\r")
 	}
 	m.terms[id] = t
 	m.mu.Unlock()

@@ -233,7 +233,7 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
       );
     }
     return MaterialApp(
-      title: 'Mac Remote',
+      title: 'Lidless',
       debugShowCheckedModeBanner: false,
       theme: appTheme(),
       navigatorKey: _nav,
