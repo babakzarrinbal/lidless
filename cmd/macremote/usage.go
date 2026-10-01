@@ -44,6 +44,7 @@ type statusSnap struct {
 	ContextWindow *ctxWindow                 `json:"context_window,omitempty"`
 	RateLimits    map[string]json.RawMessage `json:"rate_limits,omitempty"`
 	At            int64                      `json:"at"`
+	Account       string                     `json:"account,omitempty"` // who was signed in
 }
 
 // cmdStatusline is Claude Code's status line command.
@@ -58,6 +59,8 @@ func cmdStatusline(args []string) {
 		return
 	}
 	s.At = time.Now().Unix()
+	home, _ := os.UserHomeDir()
+	s.Account = claudeAccountEmail(filepath.Join(home, ".claude"))
 	if reSessionID.MatchString(s.SessionID) {
 		os.MkdirAll(statusDir(), 0o700)
 		out, _ := json.Marshal(s)
@@ -151,9 +154,12 @@ func readStatus(sid string) *statusSnap {
 	return &s
 }
 
-// claudeUsage is the newest plan usage any session saw, and the account.
+// claudeUsage is the newest plan usage any session of the signed-in account
+// saw, the account, and the tokens counted per account.
 func claudeUsage() map[string]any {
-	out := map[string]any{"limits": map[string]limit{}, "at": 0, "statusline": statuslineInstalled()}
+	out := map[string]any{"limits": map[string]limit{}, "at": 0, "statusline": statuslineInstalled(), "tokens": tokenLedger.tokenTotals()}
+	home, _ := os.UserHomeDir()
+	who := claudeAccountEmail(filepath.Join(home, ".claude"))
 	files, _ := filepath.Glob(filepath.Join(statusDir(), "*.json"))
 	var best *statusSnap
 	for _, f := range files {
@@ -162,7 +168,8 @@ func claudeUsage() map[string]any {
 			continue
 		}
 		var s statusSnap
-		if json.Unmarshal(b, &s) == nil && len(s.RateLimits) > 0 && (best == nil || s.At > best.At) {
+		// Snapshots from before they were tagged are taken as the account's.
+		if json.Unmarshal(b, &s) == nil && len(s.RateLimits) > 0 && (s.Account == "" || s.Account == who) && (best == nil || s.At > best.At) {
 			best = &s
 		}
 	}
@@ -175,7 +182,6 @@ func claudeUsage() map[string]any {
 		}
 		out["limits"], out["at"] = lim, best.At
 	}
-	home, _ := os.UserHomeDir()
 	if b, err := os.ReadFile(filepath.Join(home, ".claude.json")); err == nil {
 		var c struct {
 			Account *struct {

@@ -29,6 +29,7 @@ class ChatLog extends ChangeNotifier {
   bool loaded = false;
   bool _busy = false;
   ContextUse? ctx; // how full Claude's context window is, once it has answered
+  TokenUse? used; // the tokens this conversation used, and on which accounts
 
   Future<void> poll(Link link, int term) async {
     if (_busy || !link.online) return;
@@ -70,6 +71,11 @@ class ChatLog extends ChangeNotifier {
       if (u != ctx) changed = true;
       ctx = u;
     }
+    if (r['used'] case final Map m) {
+      final u = TokenUse.from(m);
+      if (u != used) changed = true;
+      used = u;
+    }
     loaded = true;
     if (changed) notifyListeners();
   }
@@ -88,8 +94,36 @@ class ContextUse {
   int get hashCode => Object.hash(tokens, size, model);
 }
 
-/// "127k", "1.2M": token counts the way Claude Code prints them.
+/// Tokens used: fresh input, output, and the cached input read and written.
+class TokenUse {
+  const TokenUse(this.input, this.output, this.cacheRead, this.cacheWrite, [this.accounts = const []]);
+
+  /// {used: {in, out, cr, cw}, accounts: […]}, or the sums alone.
+  factory TokenUse.from(Map m) {
+    final u = (m['used'] as Map?) ?? m;
+    int n(String k) => (u[k] as num?)?.toInt() ?? 0;
+    return TokenUse(n('in'), n('out'), n('cr'), n('cw'), [...?(m['accounts'] as List?)?.cast<String>()]);
+  }
+
+  final int input, output, cacheRead, cacheWrite;
+  final List<String> accounts;
+  int get total => input + output + cacheRead + cacheWrite;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TokenUse &&
+      other.input == input &&
+      other.output == output &&
+      other.cacheRead == cacheRead &&
+      other.cacheWrite == cacheWrite &&
+      other.accounts.join('\n') == accounts.join('\n');
+  @override
+  int get hashCode => Object.hash(input, output, cacheRead, cacheWrite, accounts.join('\n'));
+}
+
+/// "127k", "1.2M", "3B": token counts the way Claude Code prints them.
 String tokenCount(int n) {
+  if (n >= 1000000000) return '${(n / 1e9).toStringAsFixed(n >= 10000000000 ? 0 : 1)}B';
   if (n >= 1000000) return '${(n / 1e6).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
   if (n >= 1000) return '${(n / 1000).round()}k';
   return '$n';

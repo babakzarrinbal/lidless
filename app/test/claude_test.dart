@@ -21,6 +21,56 @@ void main() {
     expect(tokenCount(950), '950');
     expect(tokenCount(127400), '127k');
     expect(tokenCount(1000000), '1.0M');
+    expect(tokenCount(300000000), '300M');
+    expect(tokenCount(1200000000), '1.2B');
+    expect(tokenCount(25000000000), '25B');
+  });
+
+  test('a conversation carries the tokens it used', () {
+    final log = ChatLog();
+    var told = 0;
+    log.addListener(() => told++);
+    final used = {
+      'total': 3400,
+      'used': {'in': 100, 'out': 300, 'cr': 2800, 'cw': 200},
+      'accounts': ['a@x.com'],
+    };
+    log.apply({'path': 'a', 'next': 1, 'items': [], 'used': used});
+    expect(log.used!.total, 3400);
+    expect(log.used!.accounts, ['a@x.com']);
+    log.apply({'path': 'a', 'next': 1, 'items': [], 'used': used});
+    expect(told, 1); // unchanged: no rebuild
+  });
+
+  testWidgets('tokens per account, with a reset', (tester) async {
+    final u = ClaudeUsage.from({
+      'tokens': [
+        {'tool': 'claude', 'account': 'a@x.com', 'current': true, 'total': 120000, 'used': {'in': 20000, 'out': 100000}, 'all': 120000, 'since': 1756700000},
+        {'tool': 'copilot', 'account': 'GitHub', 'total': 0, 'used': {}, 'all': 0},
+      ],
+    });
+    expect(u.tokens.first.used.total, 120000);
+    expect(u.tokens.last.toolName, 'Copilot');
+    AccountTokens? asked;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TokensCard(u.tokens, onReset: (a) async {
+          asked = a;
+          return [
+            AccountTokens.from({'tool': 'claude', 'account': 'a@x.com', 'used': {}, 'all': 120000, 'reset': true, 'since': 1759000000}),
+          ];
+        }),
+      ),
+    ));
+    expect(find.text('120k'), findsOneWidget);
+    expect(find.text('signed in'), findsOneWidget);
+    await tester.tap(find.byTooltip('Reset').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Reset'));
+    await tester.pumpAndSettle();
+    expect(asked!.account, 'a@x.com');
+    expect(find.text('0'), findsOneWidget);
+    expect(find.textContaining('all time 120k'), findsOneWidget);
   });
 
   test('the transcript carries the context window', () {

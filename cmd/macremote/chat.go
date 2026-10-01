@@ -137,6 +137,7 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		}
 		out["ctx"] = ctx
 	}
+	out["used"] = tokenLedger.chatTokens(path)
 	return out, nil
 }
 

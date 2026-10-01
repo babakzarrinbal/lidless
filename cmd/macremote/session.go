@@ -514,6 +514,8 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Text    string `json:"text"`
 		Mtime   int64  `json:"mtime"`
 		Kind    string `json:"kind"`
+		Tool    string `json:"tool"`
+		Account string `json:"account"`
 		Session string `json:"session"`
 		Cmd     string `json:"cmd"`
 	}
@@ -604,6 +606,12 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return chatCommands(dir, p.Kind), nil
 	case "usage":
 		return claudeUsage(), nil
+	case "tokens.reset":
+		if !tokenLedger.reset(p.Tool, p.Account) {
+			return nil, fmt.Errorf("no tokens counted for %s", p.Account)
+		}
+		logf("%s reset the token count of %s %s", s.device, p.Tool, p.Account)
+		return tokenLedger.tokenTotals(), nil
 	case "fs.list":
 		return fsList(roots, p.Path)
 	case "fs.read":

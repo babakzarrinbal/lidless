@@ -1,6 +1,7 @@
 // What the phone shows around an agent session beyond its terminal: the
 // folder's earlier conversations, the slash commands, and plan usage.
 import '../net/link.dart';
+import 'chat.dart';
 
 class Conversation {
   Conversation.from(Map m)
@@ -87,11 +88,43 @@ class ClaudeUsage {
                   ? DateTime.fromMillisecondsSinceEpoch(((e.value as Map)['resets'] as num).toInt() * 1000)
                   : null,
             ),
-        ]..sort((a, b) => a.order != b.order ? a.order - b.order : a.key.compareTo(b.key));
+        ]..sort((a, b) => a.order != b.order ? a.order - b.order : a.key.compareTo(b.key)),
+        tokens = [for (final t in (m['tokens'] as List? ?? const [])) AccountTokens.from(t as Map)];
   final String email, plan;
   final bool statusline; // Claude Code reports to the agent
   final DateTime? at; // when Claude last reported
   final List<UsageLimit> limits;
+  final List<AccountTokens> tokens; // the signed-in accounts first
+}
+
+/// The tokens one account used, as the Mac counted them from the sessions.
+class AccountTokens {
+  AccountTokens.from(Map m)
+      : tool = m['tool'] as String? ?? '',
+        account = m['account'] as String? ?? '',
+        current = m['current'] == true,
+        used = TokenUse.from(m),
+        all = (m['all'] as num?)?.toInt() ?? 0,
+        since = _time(m['since']),
+        reset = m['reset'] == true,
+        last = _time(m['last']);
+  final String tool, account;
+  final bool current; // signed in now
+  final TokenUse used; // since [since]
+  final int all; // ever counted
+  final DateTime? since, last;
+  final bool reset; // [since] is a reset
+
+  String get toolName => tool == 'copilot' ? 'Copilot' : 'Claude';
+}
+
+DateTime? _time(Object? s) => ((s as num?) ?? 0) > 0 ? DateTime.fromMillisecondsSinceEpoch((s as num).toInt() * 1000) : null;
+
+/// "3 Sep", or "3 Sep 2025" in another year.
+String dayText(DateTime t, [DateTime? now]) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final s = '${t.day} ${months[t.month - 1]}';
+  return t.year == (now ?? DateTime.now()).year ? s : '$s ${t.year}';
 }
 
 /// "2h 14m", "3d 5h", "12m": how long until a time.

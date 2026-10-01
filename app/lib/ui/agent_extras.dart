@@ -290,3 +290,144 @@ class _LimitBar extends StatelessWidget {
     );
   }
 }
+
+/// What one conversation used, in parts, and on which accounts.
+Future<void> showTokenUse(BuildContext context, TokenUse u, {String tool = 'Claude'}) => showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: C.panel,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.data_usage_rounded, size: 18, color: C.dim),
+              const SizedBox(width: 8),
+              Text('This conversation: ${tokenCount(u.total)} tokens',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 12),
+            TokenParts(u),
+            if (u.accounts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('${u.accounts.length == 1 ? 'Account' : 'Accounts'}: ${u.accounts.join(', ')}',
+                  style: const TextStyle(fontSize: 13, color: C.dim)),
+            ],
+            const SizedBox(height: 6),
+            Text('Counted from $tool\'s own transcript, subagents included.',
+                style: const TextStyle(fontSize: 11.5, color: C.dim)),
+          ]),
+        ),
+      ),
+    );
+
+/// Input / output / cache read / cache write.
+class TokenParts extends StatelessWidget {
+  const TokenParts(this.u, {super.key});
+  final TokenUse u;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget part(String label, int n) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(children: [
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13, color: C.dim))),
+            Text(tokenCount(n), style: const TextStyle(fontSize: 13, fontFamily: mono)),
+          ]),
+        );
+    return Column(children: [
+      part('Input', u.input),
+      part('Output', u.output),
+      part('Cache read', u.cacheRead),
+      part('Cache write', u.cacheWrite),
+    ]);
+  }
+}
+
+/// Tokens per account, each with a reset.
+class TokensCard extends StatefulWidget {
+  const TokensCard(this.accounts, {super.key, required this.onReset});
+  final List<AccountTokens> accounts;
+  final Future<List<AccountTokens>> Function(AccountTokens) onReset;
+
+  @override
+  State<TokensCard> createState() => _TokensCardState();
+}
+
+class _TokensCardState extends State<TokensCard> {
+  late var _list = widget.accounts;
+  final _open = <String>{};
+
+  Future<void> _reset(AccountTokens a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reset ${a.toolName} tokens?'),
+        content: Text('${a.account} starts again from 0. The all-time total stays.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final l = await widget.onReset(a);
+      if (mounted) setState(() => _list = l);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Tokens used', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        if (_list.isEmpty)
+          const Text('Nothing counted yet.', style: TextStyle(fontSize: 13, color: C.dim)),
+        for (final a in _list) _account(a),
+        const Text('Copilot\'s tokens count once a Copilot session ends.',
+            style: TextStyle(fontSize: 11.5, color: C.dim)),
+      ]);
+
+  Widget _account(AccountTokens a) {
+    final key = '${a.tool}|${a.account}';
+    final open = _open.contains(key);
+    final since = a.since == null ? '' : '${a.reset ? 'since reset ' : 'since '}${dayText(a.since!)}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => open ? _open.remove(key) : _open.add(key)),
+          child: Row(children: [
+            Icon(a.tool == 'copilot' ? Icons.code_rounded : Icons.auto_awesome_rounded,
+                size: 16, color: a.tool == 'copilot' ? C.violet : C.amber),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(
+                    child: Text(a.account, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
+                  ),
+                  if (a.current) ...[
+                    const SizedBox(width: 6),
+                    const Text('signed in', style: TextStyle(fontSize: 11, color: C.green)),
+                  ],
+                ]),
+                Text([since, if (a.reset) 'all time ${tokenCount(a.all)}'].where((s) => s.isNotEmpty).join(' · '),
+                    style: const TextStyle(fontSize: 11.5, color: C.dim)),
+              ]),
+            ),
+            Text(tokenCount(a.used.total), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            IconButton(
+              tooltip: 'Reset',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.restart_alt_rounded, size: 19, color: C.dim),
+              onPressed: () => _reset(a),
+            ),
+          ]),
+        ),
+        if (open) Padding(padding: const EdgeInsets.only(left: 24, right: 40, top: 4), child: TokenParts(a.used)),
+      ]),
+    );
+  }
+}

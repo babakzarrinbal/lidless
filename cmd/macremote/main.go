@@ -324,6 +324,7 @@ func cmdServe() {
 	if msg := statuslineEnsure(); msg != "" {
 		logf("%s", msg)
 	}
+	keepCounting()
 	if c.RoomKey == "" { // configs from before the relay checked agents
 		c.RoomKey = randHex(32)
 		if err := c.save(); err != nil {

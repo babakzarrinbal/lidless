@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
+import '../model/chat.dart';
 import '../model/claude.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
@@ -172,6 +173,22 @@ class AgentPaneState extends State<AgentPane> {
               top: 6,
               right: 6,
               child: Row(children: [
+                ListenableBuilder(
+                  listenable: t.chat,
+                  builder: (context, _) {
+                    final u = t.chat.used;
+                    if (u == null || u.total == 0) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _pill(
+                        icon: Icons.data_usage_rounded,
+                        label: tokenCount(u.total),
+                        tip: 'Tokens this conversation used',
+                        onTap: () => showTokenUse(context, u, tool: widget.session.toolName),
+                      ),
+                    );
+                  },
+                ),
                 _pill(icon: Icons.history_rounded, tip: 'Conversations in this folder', onTap: _history),
                 const SizedBox(width: 6),
                 _pill(

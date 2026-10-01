@@ -592,7 +592,15 @@ class _HomeState extends State<Home> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (usage != null) ...[UsageCard(usage), const Divider(height: 28)],
+            if (usage != null) ...[
+              UsageCard(usage),
+              const Divider(height: 28),
+              TokensCard(usage.tokens, onReset: (a) async {
+                final r = await link.call('tokens.reset', {'tool': a.tool, 'account': a.account}, const Duration(seconds: 30));
+                return [for (final t in r as List) AccountTokens.from(t as Map)];
+              }),
+              const Divider(height: 28),
+            ],
             Text(s!['host'] ?? link.host, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             _row(Icons.battery_charging_full_rounded, 'Battery', s['battery'] ?? '—'),
