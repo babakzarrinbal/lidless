@@ -309,21 +309,28 @@ class ShellPanelState extends State<ShellPanel> {
         ),
       ),
       KeyBar(keys: [
+        // Most used first: what a phone keyboard lacks or hides.
         TypingKey(surface: _surface),
-        TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
-        TKey(label: 'tab', onTap: () => terms.key(t, TerminalKey.tab)),
-        ...macMods(terms),
-        ...arrowKeys(terms, t),
-        TKey(label: '^C', color: C.red, onTap: () => terms.type(t, '\x03')),
         TKey(icon: Icons.content_paste_rounded, onTap: () => pasteInto(context, terms, t)),
+        TKey(icon: Icons.keyboard_return_rounded, onTap: () => terms.type(t, '\r')),
+        TKey(label: '^C', color: C.red, onTap: () => terms.type(t, '\x03')),
+        TKey(label: 'tab', onTap: () => terms.key(t, TerminalKey.tab)),
+        TKey(icon: Icons.keyboard_arrow_up_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowUp)),
+        TKey(icon: Icons.keyboard_arrow_down_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowDown)),
         TKey(icon: Icons.edit_note_rounded, color: C.accent, onTap: _compose),
-        for (final s in ['|', '~', '/', '-', '_', '*', '>', '&', r'$', '`'])
+        TKey(label: 'esc', onTap: () => terms.key(t, TerminalKey.escape)),
+        TKey(label: '⌃', hint: 'control', active: terms.ctrl, onTap: terms.toggleCtrl),
+        TKey(icon: Icons.keyboard_arrow_left_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowLeft)),
+        TKey(icon: Icons.keyboard_arrow_right_rounded, repeat: true, onTap: () => terms.key(t, TerminalKey.arrowRight)),
+        for (final s in ['/', '-', '~', '|', '_', '*', '>', '&', r'$', '`'])
           TKey(label: s, onTap: () => t?.terminal.textInput(s)),
+        TKey(icon: Icons.backspace_outlined, repeat: true, onTap: () => terms.key(t, TerminalKey.backspace)),
+        TKey(label: '⌥', hint: 'option', active: terms.alt, onTap: terms.toggleAlt),
+        TKey(label: '⌘', hint: 'command', active: terms.cmd, onTap: terms.toggleCmd),
         TKey(label: 'home', onTap: () => terms.key(t, TerminalKey.home)),
         TKey(label: 'end', onTap: () => terms.key(t, TerminalKey.end)),
         TKey(label: 'pgup', onTap: () => terms.key(t, TerminalKey.pageUp)),
         TKey(label: 'pgdn', onTap: () => terms.key(t, TerminalKey.pageDown)),
-        TKey(icon: Icons.backspace_outlined, repeat: true, onTap: () => terms.key(t, TerminalKey.backspace)),
       ]),
     ]);
   }

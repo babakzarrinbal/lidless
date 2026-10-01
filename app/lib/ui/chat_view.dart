@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../model/chat.dart';
 import '../model/terms.dart';
@@ -14,9 +15,10 @@ import 'theme.dart';
 /// the command, the diff and the output. It follows the transcript Claude
 /// Code writes on the Mac and polls whenever the terminal draws something.
 class ChatView extends StatefulWidget {
-  const ChatView({super.key, required this.terms, required this.tab});
+  const ChatView({super.key, required this.terms, required this.tab, this.onToShell});
   final Terms terms;
   final TermTab tab;
+  final ValueChanged<String>? onToShell; // code, into the session's shell pane
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -148,8 +150,10 @@ class _ChatViewState extends State<ChatView> {
             padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
             child: switch (e.kind) {
               'user' => _User(e.text),
-              'text' => _Answer(e.text),
-              'tool' => _Tool(e, onToggle: () => setState(() => e.open = !e.open)),
+              // The copy button closes a turn: the last answer before you speak again.
+              'text' => _Answer(e.text,
+                  onToShell: widget.onToShell, last: i == items.length - 1 || items[i + 1].kind == 'user'),
+              'tool' => _Tool(e, onToShell: widget.onToShell, onToggle: () => setState(() => e.open = !e.open)),
               _ => _Note(e.text),
             },
           );
@@ -260,20 +264,89 @@ MarkdownStyleSheet _mdBuild(BuildContext context) {
 }
 
 class _Answer extends StatelessWidget {
-  const _Answer(this.text);
+  const _Answer(this.text, {this.onToShell, this.last = false});
   final String text;
+  final ValueChanged<String>? onToShell;
+  final bool last; // ends a turn: offer to copy it whole
 
   @override
-  Widget build(BuildContext context) => MarkdownBody(
-        data: text,
-        selectable: true,
-        styleSheet: _md(context),
-        onTapLink: (text, href, title) {
-          if (href == null) return;
-          Clipboard.setData(ClipboardData(text: href));
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
-        },
-      );
+  Widget build(BuildContext context) {
+    final body = MarkdownBody(
+      data: text,
+      selectable: true,
+      styleSheet: _md(context),
+      builders: {'pre': _CodeBlock(onToShell)},
+      onTapLink: (text, href, title) {
+        if (href == null) return;
+        Clipboard.setData(ClipboardData(text: href));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+      },
+    );
+    if (!last) return body;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      body,
+      _CodeActions(text, copyTip: 'Copy the answer'),
+    ]);
+  }
+}
+
+/// A fenced code block in an answer: its language, copy, and put into the
+/// shell pane (pasted, so nothing runs until you press Enter there).
+class _CodeBlock extends MarkdownElementBuilder {
+  _CodeBlock(this.onToShell);
+  final ValueChanged<String>? onToShell;
+
+  @override
+  bool isBlockElement() => true;
+
+  @override
+  Widget? visitElementAfterWithContext(
+      BuildContext context, md.Element element, TextStyle? preferredStyle, TextStyle? parentStyle) {
+    final code = element.textContent.replaceFirst(RegExp(r'\n$'), '');
+    final first = element.children?.firstOrNull;
+    final lang = first is md.Element ? (first.attributes['class'] ?? '').replaceFirst('language-', '') : '';
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Padding(
+        padding: const EdgeInsets.only(left: 12),
+        child: _CodeActions(code, label: lang, onToShell: onToShell),
+      ),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: SelectableText(code, style: _md(context).code!.copyWith(backgroundColor: Colors.transparent, color: const Color(0xFFC0CAF5))),
+      ),
+    ]);
+  }
+}
+
+/// Copy, and (when given [onToShell]) put into the terminal.
+class _CodeActions extends StatelessWidget {
+  const _CodeActions(this.text, {this.label = '', this.onToShell, this.copyTip = 'Copy'});
+  final String text, label, copyTip;
+  final ValueChanged<String>? onToShell;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget act(IconData icon, String tip, VoidCallback onTap) => IconButton(
+          icon: Icon(icon, size: 17),
+          tooltip: tip,
+          color: C.dim,
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+        );
+    return Row(children: [
+      Expanded(child: Text(label, style: const TextStyle(fontFamily: mono, fontSize: 11.5, color: C.dim))),
+      act(Icons.copy_rounded, copyTip, () {
+        Clipboard.setData(ClipboardData(text: text));
+        toast(context, 'Copied');
+      }),
+      if (onToShell case final put?)
+        act(Icons.terminal_rounded, 'Put into the terminal', () {
+          put(text);
+          toast(context, 'In the terminal: check it, then press Enter');
+        }),
+    ]);
+  }
 }
 
 const _toolIcons = {
@@ -293,9 +366,10 @@ const _toolIcons = {
 };
 
 class _Tool extends StatelessWidget {
-  const _Tool(this.e, {required this.onToggle});
+  const _Tool(this.e, {required this.onToggle, this.onToShell});
   final ChatEntry e;
   final VoidCallback onToggle;
+  final ValueChanged<String>? onToShell;
 
   @override
   Widget build(BuildContext context) {
@@ -335,7 +409,8 @@ class _Tool extends StatelessWidget {
           ),
         ),
         if (e.open) ...[
-          if (e.detail.isNotEmpty) _Code(e.detail, diff: e.name.contains('Edit')),
+          if (e.detail.isNotEmpty)
+            _Code(e.detail, diff: e.name.contains('Edit'), onToShell: e.name == 'Bash' ? onToShell : null),
           if (e.result?.isNotEmpty ?? false) _Code(e.result!, color: e.err ? C.red : null),
           const SizedBox(height: 6),
         ],
@@ -345,10 +420,11 @@ class _Tool extends StatelessWidget {
 }
 
 class _Code extends StatelessWidget {
-  const _Code(this.text, {this.diff = false, this.color});
+  const _Code(this.text, {this.diff = false, this.color, this.onToShell});
   final String text;
   final bool diff;
   final Color? color;
+  final ValueChanged<String>? onToShell; // a command: offer to put it into the terminal
 
   @override
   Widget build(BuildContext context) {
@@ -371,13 +447,18 @@ class _Code extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(8, 2, 8, 4),
       constraints: const BoxConstraints(maxHeight: 360),
       decoration: BoxDecoration(color: const Color(0xFF0A0E14), borderRadius: BorderRadius.circular(8)),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(10),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SelectableText.rich(span),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _CodeActions(text, onToShell: onToShell),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SelectableText.rich(span),
+            ),
+          ),
         ),
-      ),
+      ]),
     );
   }
 }

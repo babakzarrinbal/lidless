@@ -107,8 +107,9 @@ class SessionViewState extends State<SessionView> {
     _save();
   }
 
-  /// Opens the shell pane and types [cmd] into a live shell ([newTab]: a new one).
-  Future<void> runInShell(String cmd, {bool newTab = false, bool keyboard = true}) async {
+  /// Opens the shell pane and types [cmd] into a live shell ([newTab]: a new
+  /// one). [paste] pastes it instead, so nothing runs until Enter.
+  Future<void> runInShell(String cmd, {bool newTab = false, bool keyboard = true, bool paste = false}) async {
     setState(() {
       _shellOpen = true;
       _focus = Pane.shell;
@@ -118,7 +119,11 @@ class SessionViewState extends State<SessionView> {
     if (newTab || t == null || t.exited) t = await _newShell();
     if (t == null) return;
     terms.selectShell(session, t);
-    terms.type(t, cmd);
+    if (paste) {
+      terms.paste(t, cmd);
+    } else {
+      terms.type(t, cmd);
+    }
     if (keyboard) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _shellKey.currentState?.showKeyboard());
     }
@@ -232,6 +237,7 @@ class SessionViewState extends State<SessionView> {
           onFocus: () => _focused(Pane.agent),
           onRestart: widget.onRestart,
           onConversation: widget.onConversation,
+          onToShell: (code) => runInShell(code, paste: true, keyboard: false),
         ),
       )),
       place(sb, showSB, Container(

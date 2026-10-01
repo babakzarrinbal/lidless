@@ -24,6 +24,7 @@ class AgentPane extends StatefulWidget {
     required this.onFocus,
     required this.onRestart,
     required this.onConversation,
+    this.onToShell,
   });
   final Terms terms;
   final Session session;
@@ -31,6 +32,7 @@ class AgentPane extends StatefulWidget {
   final VoidCallback onFocus;
   final VoidCallback onRestart;
   final ValueChanged<Conversation> onConversation; // picked from the folder's history
+  final ValueChanged<String>? onToShell; // code from the chat, into the shell pane
 
   @override
   State<AgentPane> createState() => AgentPaneState();
@@ -168,7 +170,7 @@ class AgentPaneState extends State<AgentPane> {
               ),
             ),
           ),
-          if (_chat) Positioned.fill(child: ColoredBox(color: C.bg, child: ChatView(terms: terms, tab: t!))),
+          if (_chat) Positioned.fill(child: ColoredBox(color: C.bg, child: ChatView(terms: terms, tab: t!, onToShell: widget.onToShell))),
           if (_canChat && t != null)
             Positioned(
               top: 6,

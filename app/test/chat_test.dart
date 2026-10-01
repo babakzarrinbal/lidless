@@ -95,4 +95,24 @@ void main() {
     expect(find.textContaining('patched'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); // stop the poll timers
   });
+
+  testWidgets('a code block copies and goes into the terminal', (tester) async {
+    final link = Link(
+      const MacPairing(relay: 'h:1', pin: '', room: '1', macPub: '', host: 'mac'),
+      KeyPair.generate(),
+    );
+    final tab = TermTab(1, 'claude', kind: 'claude', session: 's', dir: '/');
+    tab.chat.apply(_first);
+    final put = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: ChatView(terms: Terms(link), tab: tab, onToShell: put.add))));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('go'), findsOneWidget, reason: 'the block names its language');
+    await tester.tap(find.byTooltip('Put into the terminal'));
+    await tester.pump();
+    expect(put, ['func main() {}']);
+    // The answer is followed by a tool call, not by you: no whole-answer copy.
+    expect(find.byTooltip('Copy the answer'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
