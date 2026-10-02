@@ -47,6 +47,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
+	"uniai/internal/config"
 )
 
 // holdProto is the socket protocol's version, in every 'n' frame. Holders
@@ -56,7 +58,7 @@ const holdProto = 1
 // ringKeep is how much output a terminal keeps for re-attaching clients.
 const ringKeep = 1 << 20
 
-func termsDir() string { return filepath.Join(configDir(), "terms") }
+func termsDir() string { return filepath.Join(config.Dir(), "terms") }
 
 func sockPath(id uint32) string {
 	return filepath.Join(termsDir(), strconv.FormatUint(uint64(id), 10)+".sock")

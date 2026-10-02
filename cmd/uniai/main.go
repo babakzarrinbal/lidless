@@ -32,6 +32,7 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 
+	"uniai/internal/config"
 	"uniai/internal/rpc"
 	"uniai/internal/ulog"
 )
@@ -107,25 +108,25 @@ func cmdInit(args []string) {
 	if *relay == "" || len(*pin) != 64 {
 		die("init needs -relay host:port and a 64-hex -pin")
 	}
-	if c, err := loadConfig(); err == nil {
+	if c, err := config.Load(); err == nil {
 		if !*force {
 			// Keep keys and phones; only point at the (new) relay.
 			c.Relay, c.Pin = *relay, *pin
-			if err := c.save(); err != nil {
+			if err := c.Save(); err != nil {
 				die("%v", err)
 			}
-			fmt.Println("updated relay in", configPath())
+			fmt.Println("updated relay in", config.Path())
 			return
 		}
 	}
-	c, err := newConfig(*relay, *pin)
+	c, err := config.New(*relay, *pin)
 	if err != nil {
 		die("%v", err)
 	}
-	if err := c.save(); err != nil {
+	if err := c.Save(); err != nil {
 		die("%v", err)
 	}
-	fmt.Println("created", configPath())
+	fmt.Println("created", config.Path())
 }
 
 func cmdPair(args []string) {
@@ -133,9 +134,9 @@ func cmdPair(args []string) {
 	codeOnly := fs.Bool("code", false, "print only the pairing code and exit")
 	png := fs.String("png", "", "also write the QR code to this PNG file")
 	fs.Parse(args)
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err == nil && c.Relay == "" {
-		err = errNotSetUp
+		err = config.ErrNotSetUp
 	}
 	if err != nil {
 		die("%v", err)
@@ -162,17 +163,17 @@ func cmdPair(args []string) {
 	before := len(c.Devices)
 	for time.Now().Before(p.Expires) {
 		time.Sleep(time.Second)
-		if c2, err := loadConfig(); err == nil && len(c2.Devices) > before {
+		if c2, err := config.Load(); err == nil && len(c2.Devices) > before {
 			fmt.Printf("Paired: %s\n", c2.Devices[len(c2.Devices)-1].Name)
 			return
 		}
 	}
-	os.Remove(pairingPath())
+	os.Remove(config.PairingPath())
 	die("pairing code expired")
 }
 
 func cmdDevices() {
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err != nil {
 		die("%v", err)
 	}
@@ -188,7 +189,7 @@ func cmdRevoke(args []string) {
 	if len(args) != 1 {
 		die("usage: uniai revoke <n|name>")
 	}
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err != nil {
 		die("%v", err)
 	}
@@ -207,7 +208,7 @@ func cmdRevoke(args []string) {
 	}
 	name := c.Devices[idx].Name
 	c.Devices = append(c.Devices[:idx], c.Devices[idx+1:]...)
-	if err := c.save(); err != nil {
+	if err := c.Save(); err != nil {
 		die("%v", err)
 	}
 	fmt.Printf("removed %s (its open sessions close within seconds)\n", name)
@@ -260,7 +261,7 @@ func launchctl(args ...string) error {
 func domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
 
 func cmdInstall() {
-	if _, err := ensureConfig(); err != nil {
+	if _, err := config.Ensure(); err != nil {
 		die("%v", err)
 	}
 	if brewServiceLoaded() {
@@ -334,11 +335,11 @@ func cmdReload() {
 func cmdUninstall() {
 	launchctl("bootout", domain()+"/"+label)
 	os.Remove(plistPath())
-	fmt.Println("agent stopped and removed from login (config kept in", configDir()+")")
+	fmt.Println("agent stopped and removed from login (config kept in", config.Dir()+")")
 }
 
 func cmdStatus() {
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err != nil {
 		die("%v", err)
 	}
@@ -362,7 +363,7 @@ func cmdStatus() {
 
 func cmdServe() {
 	holdAgentLock()
-	c, err := ensureConfig()
+	c, err := config.Ensure()
 	if err != nil {
 		die("%v", err)
 	}
@@ -371,12 +372,12 @@ func cmdServe() {
 	}
 	keepCounting()
 	if c.RoomKey == "" { // configs from before the relay checked agents
-		c.RoomKey = randHex(32)
-		if err := c.save(); err != nil {
+		c.RoomKey = config.RandHex(32)
+		if err := c.Save(); err != nil {
 			die("%v", err)
 		}
 	}
-	st, _ := os.Stat(configPath())
+	st, _ := os.Stat(config.Path())
 	a := &Agent{cfg: c, cfgMtime: st.ModTime(), host: computerName(), terms: newTerms(), plugins: corePlugins(), sessions: map[*Session]struct{}{}}
 	a.terms.onChange = a.termsChanged
 	a.terms.onEvent = a.termEvent

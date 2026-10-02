@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"uniai/internal/config"
 )
 
 // cmdSetup is the one command a new Mac needs: point at a relay, start the
@@ -60,16 +62,16 @@ func cmdSetup(args []string) {
 		die("the relay at %s presents pin %s, not %s: wrong server, or something in between", relay, got, *pin)
 	}
 
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err == nil {
 		c.Relay, c.Pin = relay, got // keys and phones stay
-	} else if c, err = newConfig(relay, got); err != nil {
+	} else if c, err = config.New(relay, got); err != nil {
 		die("%v", err)
 	}
-	if err := c.save(); err != nil {
+	if err := c.Save(); err != nil {
 		die("%v", err)
 	}
-	fmt.Println("relay set in", configPath())
+	fmt.Println("relay set in", config.Path())
 
 	if brew := brewInstalled(); brew != "" {
 		if _, err := os.Stat(plistPath()); err == nil {

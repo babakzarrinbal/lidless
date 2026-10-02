@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"uniai/internal/config"
 )
 
 // The app on this Mac talks to its own core over a unix socket in the config
@@ -17,7 +19,7 @@ import (
 // socket are the owner's only, so whoever connects is this user.
 //
 // The core speaks first, with the welcome a phone gets after its handshake.
-func localSock() string { return filepath.Join(configDir(), "core.sock") }
+func localSock() string { return filepath.Join(config.Dir(), "core.sock") }
 
 func (a *Agent) serveLocal() {
 	path := localSock()

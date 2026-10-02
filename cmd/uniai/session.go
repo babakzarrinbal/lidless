@@ -23,6 +23,7 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/websocket"
 
+	"uniai/internal/config"
 	"uniai/internal/fsops"
 	"uniai/internal/plugin"
 )
@@ -45,7 +46,7 @@ var suite = noise.NewCipherSuite(noise.DH25519, noise.CipherChaChaPoly, noise.Ha
 
 type Agent struct {
 	mu       sync.Mutex
-	cfg      *Config
+	cfg      *config.Config
 	cfgMtime time.Time
 	host     string
 	terms    *Terms
@@ -63,7 +64,7 @@ func computerName() string {
 	return h
 }
 
-func (a *Agent) config() *Config {
+func (a *Agent) config() *config.Config {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cfg
@@ -72,7 +73,7 @@ func (a *Agent) config() *Config {
 // reload rereads agent.json when it changed (pairing, `revoke`) and drops
 // sessions of phones that are no longer listed.
 func (a *Agent) reload() {
-	st, err := os.Stat(configPath())
+	st, err := os.Stat(config.Path())
 	if err != nil {
 		return
 	}
@@ -82,7 +83,7 @@ func (a *Agent) reload() {
 		return
 	}
 	a.mu.Unlock()
-	c, err := loadConfig()
+	c, err := config.Load()
 	if err != nil {
 		logf("config: %v", err)
 		return
@@ -91,7 +92,7 @@ func (a *Agent) reload() {
 	a.cfg, a.cfgMtime = c, st.ModTime()
 	var drop []*Session
 	for s := range a.sessions {
-		if !s.local && c.device(s.pub) == nil {
+		if !s.local && c.FindDevice(s.pub) == nil {
 			drop = append(drop, s)
 		}
 	}
@@ -202,7 +203,7 @@ type hello struct {
 func (a *Agent) authorize(pub string, h hello) (string, error) {
 	a.reload()
 	c := a.config()
-	if d := c.device(pub); d != nil {
+	if d := c.FindDevice(pub); d != nil {
 		return d.Name, nil
 	}
 	if h.Pair == "" {
@@ -210,18 +211,18 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	}
 	// Claim the token by renaming its file: the rename is atomic, so two phones
 	// racing with the same code cannot both get in. A wrong code puts it back.
-	claimed := pairingPath() + ".claimed"
-	if err := os.Rename(pairingPath(), claimed); err != nil {
+	claimed := config.PairingPath() + ".claimed"
+	if err := os.Rename(config.PairingPath(), claimed); err != nil {
 		return "", errors.New("pairing code expired or already used; make a new one")
 	}
-	var p Pairing
+	var p config.Pairing
 	b, err := os.ReadFile(claimed)
 	if err != nil || json.Unmarshal(b, &p) != nil || time.Now().After(p.Expires) {
 		os.Remove(claimed)
 		return "", errors.New("pairing code expired; make a new one")
 	}
 	if subtle.ConstantTimeCompare([]byte(p.Token), []byte(h.Pair)) != 1 {
-		os.Rename(claimed, pairingPath())
+		os.Rename(claimed, config.PairingPath())
 		return "", errors.New("wrong pairing code")
 	}
 	os.Remove(claimed) // single use
@@ -231,9 +232,9 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	}
 	a.mu.Lock()
 	nc := *a.cfg
-	nc.Devices = append(append([]Device(nil), a.cfg.Devices...), Device{Name: name, Pub: pub, Added: time.Now()})
+	nc.Devices = append(append([]config.Device(nil), a.cfg.Devices...), config.Device{Name: name, Pub: pub, Added: time.Now()})
 	a.mu.Unlock()
-	if err := nc.save(); err != nil {
+	if err := nc.Save(); err != nil {
 		return "", err
 	}
 	a.reload()
@@ -278,7 +279,7 @@ func (s *Session) close() {
 func (s *Session) serve() {
 	defer s.close()
 	cfg := s.a.config()
-	key, err := cfg.key()
+	key, err := cfg.Key()
 	if err != nil {
 		logf("session: %v", err)
 		return

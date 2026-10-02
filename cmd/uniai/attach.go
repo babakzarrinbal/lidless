@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"uniai/internal/config"
 )
 
 const detachKey = 0x1d // Ctrl-]
@@ -143,7 +145,7 @@ func cmdAgentCLI(tool string, args []string) {
 		}
 	}
 	shell := loginShell()
-	if c, err := loadConfig(); err == nil {
+	if c, err := config.Load(); err == nil {
 		shell = pickShell("", c.Shell, shells())
 	}
 	q := []string{tool}
@@ -159,7 +161,7 @@ func cmdAgentCLI(tool string, args []string) {
 	if err != nil || cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	id, err := spawnHold(holdSpec{Shell: shell, Dir: cwd, Kind: tool, Session: randHex(8), Run: run,
+	id, err := spawnHold(holdSpec{Shell: shell, Dir: cwd, Kind: tool, Session: config.RandHex(8), Run: run,
 		Typed: typed + "; exit", // quitting it here ends the session everywhere
 		Cols:  uint16(cols), Rows: uint16(rows)})
 	if err != nil {
