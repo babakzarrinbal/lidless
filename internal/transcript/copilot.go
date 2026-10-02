@@ -3,8 +3,8 @@ package transcript
 // GitHub Copilot CLI's sessions, for the phone's chat view and lists. Copilot
 // keeps each session in ~/.copilot/session-state/<id>/: workspace.yaml (the
 // folder it ran in) and events.jsonl (one event per line: user.message,
-// assistant.message, tool.execution_start/complete, …). A running Copilot
-// holds inuse.<pid>.lock in its session's folder.
+// assistant.message, tool.execution_start/complete, …), written from the
+// first message on. copilot_session.go finds the session a process has open.
 
 import (
 	"bufio"
@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"uniai/internal/shellenv"
@@ -27,44 +26,6 @@ import (
 func copilotHome() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".copilot", "session-state")
-}
-
-// copilotTranscript finds the events file of a Copilot process running under pid.
-func copilotTranscript(pid int) string {
-	kids := map[int][]int{}
-	for c, p := range Parents() {
-		kids[p] = append(kids[p], c)
-	}
-	root := copilotHome()
-	for q := kids[pid]; len(q) > 0; q = q[1:] {
-		m, _ := filepath.Glob(filepath.Join(root, "*", "inuse."+strconv.Itoa(q[0])+".lock"))
-		if len(m) == 0 {
-			q = append(q, kids[q[0]]...)
-			continue
-		}
-		p := filepath.Join(filepath.Dir(m[0]), "events.jsonl")
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-		return ""
-	}
-	return ""
-}
-
-// copilotRunning maps the id of each session a live Copilot holds to its pid.
-func copilotRunning() map[string]int {
-	m, _ := filepath.Glob(filepath.Join(copilotHome(), "*", "inuse.*.lock"))
-	out := map[string]int{}
-	for _, f := range m {
-		pid, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "inuse."), ".lock"))
-		if pid <= 0 {
-			continue
-		}
-		if err := syscall.Kill(pid, 0); err == nil || err == syscall.EPERM {
-			out[filepath.Base(filepath.Dir(f))] = pid
-		}
-	}
-	return out
 }
 
 // StopCopilot quits the Copilot CLI that has session sid open outside a
