@@ -7,6 +7,7 @@ import 'package:uniai/features/workspaces/recent_list.dart';
 import 'package:uniai/app/theme.dart';
 import 'package:uniai/features/chat/claude.dart' show Conversation;
 import 'package:uniai/features/terminals/session.dart';
+import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/net/link.dart';
 
@@ -19,6 +20,7 @@ class HomeRecent extends StatelessWidget {
     required this.all,
     required this.onNew,
     required this.onResume,
+    required this.onRemoveDir,
   });
   final Link link;
   final SharedPreferences? prefs;
@@ -26,6 +28,7 @@ class HomeRecent extends StatelessWidget {
   final List<Session> all; // the sessions open on the Mac
   final void Function({String? dir}) onNew;
   final Future<void> Function(String dir, Conversation c, {String? flagsOf}) onResume;
+  final void Function(String dir) onRemoveDir;
 
   @override
   Widget build(BuildContext context) {
@@ -68,18 +71,27 @@ class HomeRecent extends StatelessWidget {
               const Text('Recent folders', style: TextStyle(color: C.dim, fontSize: 13)),
               const SizedBox(height: 6),
               for (final d in recent)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.folder_rounded, color: C.amber),
-                  title: Text(baseName(d)),
-                  subtitle: Text(tildePath(d, link.home), overflow: TextOverflow.ellipsis),
-                  onTap: link.online ? () => onNew(dir: d) : null,
+                GestureDetector(
+                  onSecondaryTap: () => _menu(context, d),
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.folder_rounded, color: C.amber),
+                    title: Text(baseName(d)),
+                    subtitle: Text(tildePath(d, link.home), overflow: TextOverflow.ellipsis),
+                    onTap: link.online ? () => onNew(dir: d) : null,
+                    onLongPress: () => _menu(context, d),
+                  ),
                 ),
             ],
           ]),
         ),
       ),
     );
+  }
+
+  Future<void> _menu(BuildContext context, String dir) async {
+    final open = all.where((s) => s.dir == dir).length;
+    if (await folderMenu(context, dir, home: link.home, open: open)) onRemoveDir(dir);
   }
 }

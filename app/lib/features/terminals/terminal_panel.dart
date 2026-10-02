@@ -35,6 +35,7 @@ class TermTabs extends StatelessWidget {
             return GestureDetector(
               onTap: () => terms.selectShell(session, t),
               onLongPress: () => _tabMenu(context, t),
+              onSecondaryTap: () => _tabMenu(context, t), // right click on a Mac
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -71,11 +72,14 @@ class TermTabs extends StatelessWidget {
         ),
       ),
       // No tooltip on +: it would take the long press.
-      IconButton(
-        visualDensity: VisualDensity.compact,
-        icon: const Icon(Icons.add_rounded, size: 22),
-        onPressed: onNew,
-        onLongPress: onPick == null ? null : _pick,
+      GestureDetector(
+        onSecondaryTap: onPick == null ? null : _pick,
+        child: IconButton(
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.add_rounded, size: 22),
+          onPressed: onNew,
+          onLongPress: onPick == null ? null : _pick,
+        ),
       ),
       if (onPick != null)
         IconButton(

@@ -13,6 +13,7 @@ import 'package:uniai/net/link.dart';
 import 'package:uniai/features/alerts/notify.dart';
 import 'package:uniai/net/store.dart';
 import 'package:uniai/features/devices/macs.dart';
+import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/app/session_view.dart';
 import 'package:uniai/app/home_bar.dart';
@@ -247,6 +248,7 @@ class _HomeState extends State<Home> {
               onNew: _newSession,
               onShowRecent: _showRecent,
               onResume: (dir, c) => _flows.resumeIn(dir, c),
+              onRemoveDir: _forgetDir,
               onSelect: _select,
               onClose: _flows.closeSession,
               onLock: widget.onLock,
@@ -289,7 +291,13 @@ class _HomeState extends State<Home> {
         all: all,
         onNew: _newSession,
         onResume: _flows.resumeIn,
+        onRemoveDir: _forgetDir,
       );
+
+  Future<void> _forgetDir(String dir) async {
+    await forgetRecentDir(_prefs, _mac, dir);
+    if (mounted) setState(() {});
+  }
 
   /// The view of the session on screen, where the status sheet types the lid command.
   SessionViewState? _currentView() {

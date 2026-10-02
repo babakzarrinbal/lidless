@@ -30,6 +30,7 @@ class HomeDrawer extends StatelessWidget {
     required this.onNew,
     required this.onShowRecent,
     required this.onResume,
+    required this.onRemoveDir,
     required this.onSelect,
     required this.onClose,
     required this.onLock,
@@ -47,6 +48,7 @@ class HomeDrawer extends StatelessWidget {
   final void Function(MacPairing) onSwitch;
   final void Function({String? dir}) onNew;
   final Future<void> Function(String dir, Conversation c) onResume;
+  final void Function(String dir) onRemoveDir;
   final void Function(String id) onSelect;
   final void Function(Session) onClose;
 
@@ -121,6 +123,7 @@ class HomeDrawer extends StatelessWidget {
                 tile: (s) => _sessionTile(s, s == cur),
                 onNew: (dir) => onNew(dir: dir),
                 onResume: (dir, c) => onResume(dir, c),
+                onRemove: onRemoveDir,
               ),
             ]),
           ),

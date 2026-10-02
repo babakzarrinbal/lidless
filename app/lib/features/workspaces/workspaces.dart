@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uniai/features/terminals/session.dart';
 import 'package:uniai/features/chat/claude.dart';
 import 'package:uniai/net/link.dart';
+import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/app/logos.dart';
 import 'package:uniai/app/theme.dart';
@@ -27,6 +28,7 @@ class WorkspaceList extends StatefulWidget {
     required this.tile,
     required this.onNew,
     required this.onResume,
+    this.onRemove,
     this.load,
   });
   final Link link;
@@ -37,6 +39,7 @@ class WorkspaceList extends StatefulWidget {
   final Widget Function(Session) tile;
   final void Function(String dir) onNew;
   final void Function(String dir, Conversation c) onResume;
+  final void Function(String dir)? onRemove; // took it off the recent folders
   final Future<List<Conversation>> Function(String dir)? load; // tests: instead of asking the Mac
 
   @override
@@ -128,7 +131,7 @@ class _WorkspaceListState extends State<WorkspaceList> {
         final unread = here.any((s) => s.activity == Activity.unread) ||
             convs.any((c) => _activity(c) == Activity.unread);
         return [
-          _header(dir, shut: shut, count: here.length + today.length, unread: shut && unread),
+          _header(dir, shut: shut, count: here.length + today.length, unread: shut && unread, open: here.length),
           if (!shut) ...[
             for (final s in here) widget.tile(s),
             for (final c in today) _convTile(dir, c),
@@ -143,8 +146,14 @@ class _WorkspaceListState extends State<WorkspaceList> {
     ]);
   }
 
-  Widget _header(String dir, {required bool shut, required int count, required bool unread}) => InkWell(
+  Future<void> _menu(String dir, int open) async {
+    if (await folderMenu(context, dir, home: widget.link.home, open: open)) widget.onRemove?.call(dir);
+  }
+
+  Widget _header(String dir, {required bool shut, required int count, required bool unread, required int open}) => InkWell(
         onTap: () => _toggle(dir),
+        onLongPress: widget.onRemove == null ? null : () => _menu(dir, open),
+        onSecondaryTap: widget.onRemove == null ? null : () => _menu(dir, open),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 4, 2),
           child: Row(children: [

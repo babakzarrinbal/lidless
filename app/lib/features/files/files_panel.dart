@@ -207,24 +207,28 @@ class FilesPanel extends StatelessWidget {
   Widget _tile(BuildContext context, Entry e) {
     final (icon, color) = fileIcon(e.name, dir: e.dir);
     final path = joinPath(files.cwd!, e.name);
-    return ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -1),
-      leading: Icon(icon, color: color, size: 22),
-      title: Text(e.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontSize: 14,
-              color: e.name.startsWith('.') ? C.dim : C.text,
-              fontStyle: e.link ? FontStyle.italic : FontStyle.normal)),
-      subtitle: Text(
-        e.dir ? ago(e.mtime) : '${humanSize(e.size)} · ${ago(e.mtime)}',
-        style: const TextStyle(fontSize: 11.5, color: C.dim),
+    // Long press, or right click on a Mac: the actions.
+    return GestureDetector(
+      onSecondaryTap: () => _actions(context, e, path),
+      child: ListTile(
+        dense: true,
+        visualDensity: const VisualDensity(vertical: -1),
+        leading: Icon(icon, color: color, size: 22),
+        title: Text(e.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 14,
+                color: e.name.startsWith('.') ? C.dim : C.text,
+                fontStyle: e.link ? FontStyle.italic : FontStyle.normal)),
+        subtitle: Text(
+          e.dir ? ago(e.mtime) : '${humanSize(e.size)} · ${ago(e.mtime)}',
+          style: const TextStyle(fontSize: 11.5, color: C.dim),
+        ),
+        trailing: e.dir ? const Icon(Icons.chevron_right_rounded, size: 18) : null,
+        onTap: () => e.dir ? files.go(path) : files.open(path),
+        onLongPress: () => _actions(context, e, path),
       ),
-      trailing: e.dir ? const Icon(Icons.chevron_right_rounded, size: 18) : null,
-      onTap: () => e.dir ? files.go(path) : files.open(path),
-      onLongPress: () => _actions(context, e, path),
     );
   }
 
