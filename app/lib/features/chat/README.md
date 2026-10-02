@@ -15,6 +15,8 @@ Tests: `test/features/chat/chat_test.dart`, `claude_test.dart`.
 
 Traps:
 - Transcripts are read from files on the Mac, so a chat can lag the terminal.
+  Until there is a conversation (start-up, loading a session) `ChatScreen`
+  (chat_screen.dart) shows the terminal's screen live instead.
 - `chat.handoff` may be unknown on an older agent; an older `chat.stop`
   quits only Claude.
 - Old messages load by offset (`chat.older`); keep scroll position stable.

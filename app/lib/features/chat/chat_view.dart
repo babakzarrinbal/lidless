@@ -11,6 +11,7 @@ import 'package:uniai/app/theme.dart';
 import 'package:uniai/features/chat/chat_messages.dart';
 import 'package:uniai/features/chat/chat_tools.dart';
 import 'package:uniai/features/chat/chat_status.dart';
+import 'package:uniai/features/chat/chat_screen.dart';
 
 /// The agent's conversation the way the Claude app shows it: your messages,
 /// formatted answers, and one compact row per tool call that opens to show
@@ -117,10 +118,12 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     final items = log.items;
-    if (log.loaded && log.path.isEmpty && log.queued.isEmpty) {
-      return _empty('Nothing here yet: send ${widget.terms.session(widget.tab.session)?.toolName ?? 'the agent'} a message below.\nIts start-up screen (a folder trust question, say) is under Terminal at the top right.');
+    // No conversation yet (starting up, loading a session): the screen, live.
+    if (log.loaded && items.isEmpty && !log.hasOlder && log.queued.isEmpty && !_live.value.asking) {
+      final tool = widget.terms.session(widget.tab.session)?.toolName ?? 'the agent';
+      return ChatScreen(terminal: widget.tab.terminal, hint: 'Nothing here yet: send $tool a message below. Its terminal, live:');
     }
-    if (!log.loaded) return _empty('Reading the conversation…');
+    if (!log.loaded) return ChatScreen(terminal: widget.tab.terminal, hint: 'Reading the conversation… The terminal, live:');
     final queued = log.queued, live = _live.value;
     // Rows from the bottom up, so the list is anchored at the newest end and
     // never jumps as answers, tool rows and the working line come and go.
@@ -199,11 +202,4 @@ class _ChatViewState extends State<ChatView> {
         ),
     ]);
   }
-
-  Widget _empty(String s) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(s, textAlign: TextAlign.center, style: const TextStyle(color: C.dim, height: 1.5)),
-        ),
-      );
 }

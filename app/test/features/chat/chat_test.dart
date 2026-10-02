@@ -7,6 +7,7 @@ import 'package:uniai/features/terminals/terms.dart';
 import 'package:uniai/net/link.dart';
 import 'package:uniai/net/store.dart';
 import 'package:uniai/features/chat/chat_view.dart';
+import 'package:uniai/features/chat/chat_screen.dart';
 import 'package:xterm/xterm.dart';
 
 import '../../support/fakes.dart';
@@ -165,6 +166,28 @@ void main() {
     expect(put, ['func main() {}']);
     // The answer is followed by a tool call, not by you: no whole-answer copy.
     expect(find.byTooltip('Copy the answer'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('before there is a conversation the chat shows the terminal, live', (tester) async {
+    final link = Link(
+      const MacPairing(relay: 'h:1', pin: '', room: '1', macPub: '', host: 'mac'),
+      KeyPair.generate(),
+    );
+    final tab = TermTab(1, 'copilot', kind: 'copilot', session: 's', dir: '/');
+    tab.terminal.write('Loading session…\r\n\r\n\r\n\r\n  ⠋ Starting\r\n');
+    expect(screenLines(tab.terminal), ['Loading session…', '', '  ⠋ Starting']);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ChatView(terms: Terms(link), tab: tab))));
+    await tester.pump();
+    expect(find.textContaining('Reading the conversation'), findsOneWidget);
+    expect(find.textContaining('Loading session…'), findsOneWidget);
+    tab.terminal.write('Resumed session abc\r\n');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('Resumed session abc'), findsOneWidget);
+    tab.chat.apply({'path': '', 'next': 0, 'items': []});
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('Nothing here yet'), findsOneWidget);
+    expect(find.textContaining('Resumed session abc'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }
