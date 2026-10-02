@@ -1,8 +1,8 @@
-# Babzi download page on the server: own port (:8462); never touches :443.
+# bz-uniai download page on the server: own port (:8462); never touches :443.
 services:
   site:
     image: nginx:1.29-alpine
-    container_name: babzi-site
+    container_name: uniai-site
     restart: unless-stopped
     ports:
       - "8462:8443"

@@ -1,4 +1,4 @@
-# Babzi (formerly Mac Remote, Lidless)
+# bz-uniai (formerly Babzi, Mac Remote, Lidless)
 
 A personal Android app that gives the phone a terminal and the files of a Mac,
 next to the Claude Code app.

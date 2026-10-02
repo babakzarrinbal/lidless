@@ -99,7 +99,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _set(LinkState s, [String? err]) {
-    if (s != state) debugPrint('babzi: link ${s.name}${err == null ? '' : ': $err'}');
+    if (s != state) debugPrint('uniai: link ${s.name}${err == null ? '' : ': $err'}');
     state = s;
     error = err;
     if (!_disposed) notifyListeners();

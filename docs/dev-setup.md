@@ -1,4 +1,4 @@
-# Setting up a Mac to work on Babzi
+# Setting up a Mac to work on bz-uniai
 
 Clone the repo, install the toolchain, copy three untracked files over, then
 check with `./dev.sh doctor`.

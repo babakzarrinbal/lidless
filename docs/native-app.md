@@ -1,6 +1,6 @@
-# Babzi everywhere: the native app plan
+# bz-uniai everywhere: the native app plan
 
-Where Babzi is going: one native app on Mac, Android, iOS, Windows and
+Where bz-uniai is going: one native app on Mac, Android, iOS, Windows and
 Linux. Every device that can host AI sessions is the **master** of its own
 sessions, and a **client** of every device it is paired with. How the current
 system works: [architecture.md](architecture.md).
@@ -19,11 +19,11 @@ Decided 2026-10-02:
   keep working throughout.
 - **Public, one app that bundles everything; no brew** (brew stays only until
   the app replaces it on our own Macs). The app installs and updates the core
-  itself, and offers the `babzi` command line the way VS Code offers
+  itself, and offers the `uniai` command line the way VS Code offers
   `code` (a menu item that links it into the PATH).
-- **Name: Babzi** ("Babzi: AI Code Anywhere" in the stores), with its page at
-  babzi.zarrinbal.org for now. No app or trademark by that name turned up;
-  babzi.com belongs to someone else. Only what users see is renamed: the
+- **Name: bz-uniai** ("bz-uniai: AI Code Anywhere" in the stores), with its page at
+  uniai.zarrinbal.org (a subdomain we own, so nothing to register).
+  The `bz-` prefix keeps it apart from other "UniAI" products. Only what users see is renamed: the
   package `org.zarrinbal.macremote`, `~/.config/macremote`, the Noise prologue,
   the LaunchAgent labels, the VS Code extension id (`zarrinbal.lidless`) and the
   box's `/opt/lidless` keep their names, so pairings and installs survive.

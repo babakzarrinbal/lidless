@@ -334,7 +334,7 @@ class _RecentListState extends State<RecentList> {
     try {
       final list = await (load ?? () => Conversation.recent(widget.link))();
       if (!mounted) return;
-      debugPrint('babzi: recent ${list.length} (epoch $epoch)');
+      debugPrint('uniai: recent ${list.length} (epoch $epoch)');
       _seen.listed(list, openTerms(widget.sessions));
       _failed = false;
       _tries = 0;
@@ -345,7 +345,7 @@ class _RecentListState extends State<RecentList> {
       });
     } catch (e) {
       // An older agent, or the link just came up: say why, ask again a few times.
-      debugPrint('babzi: recent failed (epoch $epoch, try $_tries): $e');
+      debugPrint('uniai: recent failed (epoch $epoch, try $_tries): $e');
       _failed = true;
       if (mounted) {
         setState(() {

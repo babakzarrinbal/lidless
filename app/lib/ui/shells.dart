@@ -39,7 +39,7 @@ class _ShellSheet extends StatelessWidget {
         } else if (info == null) {
           body = const Padding(
             padding: EdgeInsets.all(20),
-            child: Text('Update Babzi on the Mac to choose the shell: brew upgrade macremote, then brew services restart macremote.',
+            child: Text('Update bz-uniai on the Mac to choose the shell: brew upgrade macremote, then brew services restart macremote.',
                 style: TextStyle(color: C.dim)),
           );
         } else {

@@ -1,4 +1,4 @@
-# Babzi (formerly Lidless, Mac Remote): working notes for coding agents
+# bz-uniai (formerly Babzi, Lidless, Mac Remote): working notes for coding agents
 
 CLAUDE.md imports this file. Read README.md for what the product is,
 **docs/architecture.md for how it works** (holders, shared terminals, the
@@ -13,13 +13,13 @@ certificate pin, keys, or tokens. Those live in untracked files (listed below).
 
 | Path | What |
 |---|---|
-| `cmd/macremote/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `hold.go`: the holder process that owns each terminal's pty and serves it on a unix socket (protocol in docs/architecture.md). `term.go`: the agent's side: adopts holders, mirrors their output for phones, sends `{"ev":"terms"}`. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `vscode.go`: VS Code Copilot Chat files; `vscodemirror.go`: a chat carried on in a shared terminal is mirrored back into VS Code's chat file, and the Babzi VS Code extension (`vscode-ext/`, embedded, installed by `macremote vscode` or at the first handoff) opens that terminal in VS Code. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `macremote setup`. `main.go`: CLI, LaunchAgent install. |
+| `cmd/macremote/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `hold.go`: the holder process that owns each terminal's pty and serves it on a unix socket (protocol in docs/architecture.md). `term.go`: the agent's side: adopts holders, mirrors their output for phones, sends `{"ev":"terms"}`. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `vscode.go`: VS Code Copilot Chat files; `vscodemirror.go`: a chat carried on in a shared terminal is mirrored back into VS Code's chat file, and the bz-uniai VS Code extension (`vscode-ext/`, embedded, installed by `macremote vscode` or at the first handoff) opens that terminal in VS Code. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `macremote setup`. `main.go`: CLI, LaunchAgent install. |
 | `cmd/relay/` | Go relay (Docker on the server, port 8460). A dumb pipe: per-IP rate limit (burst 15, 1 per 2 s), 8 phones per room, 10 s accept timeout. Close codes: 4404 Mac offline, 4408 Mac did not answer, 4429 too many, 4001 agent replaced. |
 | `cmd/noisevec/` | Generates `app/test/noise_vectors.json` (`./dev.sh vectors`). |
-| `app/` | Flutter Android app (`org.zarrinbal.macremote`, shown as "Babzi"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac, live-synced on `terms` events. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
+| `app/` | Flutter Android app (`org.zarrinbal.macremote`, shown as "bz-uniai"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac, live-synced on `terms` events. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
 | `packaging/homebrew/` | Formula template; `./dev.sh brew` fills it in. Tap: github.com/babakzarrinbal/homebrew-macremote. |
 | `deploy/` | Relay Dockerfile + compose; `deploy/site/` is the landing page's nginx. |
-| `site/` | Landing page (babzi.zarrinbal.org); `site-build` refuses to ship a server address. |
+| `site/` | Landing page (uniai.zarrinbal.org); `site-build` refuses to ship a server address. |
 
 RPC methods (agent `session.go`, about line 540): `term.*` (list, open, attach,
 detach, resize, seen, rename, close; park/unpark only for terminals an old app

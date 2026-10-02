@@ -265,7 +265,7 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
       );
     }
     return MaterialApp(
-      title: 'Babzi',
+      title: 'bz-uniai',
       debugShowCheckedModeBanner: false,
       theme: appTheme(),
       navigatorKey: _nav,

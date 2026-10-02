@@ -1,4 +1,4 @@
-// Babzi in VS Code (the extension id stays zarrinbal.lidless). The macremote agent writes links.json: the shared
+// bz-uniai in VS Code (the extension id stays zarrinbal.lidless). The macremote agent writes links.json: the shared
 // terminals carrying on a VS Code chat ("Continue on all devices" on a
 // phone). Each one opens here once, in the window that has its folder, as
 // `macremote attach <id>`: live, and typed into like any terminal. The
@@ -70,11 +70,11 @@ async function pick() {
   try {
     list = JSON.parse(cp.execFileSync(bin(), ['ls', '--json'], { encoding: 'utf8', timeout: 10000 }) || '[]');
   } catch (e) {
-    vscode.window.showErrorMessage(`Babzi: could not list the shared terminals (${e.message})`);
+    vscode.window.showErrorMessage(`bz-uniai: could not list the shared terminals (${e.message})`);
     return;
   }
   if (!list.length) {
-    vscode.window.showInformationMessage('Babzi: no shared terminals on this Mac.');
+    vscode.window.showInformationMessage('bz-uniai: no shared terminals on this Mac.');
     return;
   }
   const home = os.homedir();

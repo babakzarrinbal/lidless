@@ -1,4 +1,4 @@
-# How Babzi works
+# How bz-uniai works
 
 The whole system in one page: what runs where, how a terminal is shared by
 every device, and the traps. Product overview: [README.md](../README.md).
