@@ -3,3 +3,6 @@ build/
 .DS_Store
 deploy/relay-linux-amd64
 .server.env
+
+# Claude Code: per-machine permissions
+.claude/settings.local.json
