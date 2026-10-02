@@ -46,10 +46,14 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   /// Called once the Mac has accepted a new pairing.
   void Function(MacPairing)? onPaired;
 
+  /// With a new pairing: this desktop's own pairing code, so the Mac pairs
+  /// back (features/devices/pair_back.dart). Null on a phone.
+  String? back;
+
   WebSocket? _ws;
   CipherState? _send, _recv;
   bool _plain = false; // the local core: frames go unencrypted
-  bool _started = false; // ran the bundled core's install once
+  static bool _started = false; // ran the bundled core's install once per app run
   final _acc = BytesBuilder(copy: false);
   final _pending = <int, Completer<dynamic>>{};
   int _nextId = 1, _gen = 0, _backoff = 1;
@@ -151,6 +155,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
       'v': 1,
       'name': deviceName,
       if (pairing.token != null) 'pair': pairing.token,
+      if (pairing.token != null && back != null) 'back': back,
     };
     var shaken = false;
     final handshakeTimer = Timer(const Duration(seconds: 15), () {

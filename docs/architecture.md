@@ -143,6 +143,21 @@ parked. Parked state lives only in the agent's memory.
 - The app must handle an older agent: an `RpcError` with code `unknown`. Macs
   update separately through brew.
 
+### Pairing
+
+A pairing code (`mr1.<base64url json>`: relay, pin, room, Mac key, one-time
+token, host) comes from `devices.pair` or `uniai pair`; the token lasts 10
+minutes and a new code replaces the last one. The device sends the token in
+its Noise hello (`pair`), and the core adds the device's key to agent.json.
+
+Two desktops pair both ways. A Mac's app sends its own core's code along
+(`back` in the hello, `Link.back`). The other core keeps it in
+`~/.config/uniai/offers.json` (`offers.go`) and says `{"ev":"devices"}`; its
+app takes the codes with `devices.offers` (local session only) and pairs with
+each Mac it does not know yet (`features/devices/pair_back.dart`). If that app
+is not running within the 10 minutes, the code expires and the user pairs
+that way by hand. Phones run no core, so they pair one way.
+
 ### Unread and notifications
 
 A tab is unread when an agent terminal has more than 512 bytes past its read

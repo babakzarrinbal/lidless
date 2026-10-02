@@ -126,6 +126,8 @@ func (a *Agent) deviceCall(method, pub, name string) (any, error) {
 			return nil, err
 		}
 		logf("this Mac's app removed a phone (%.12s…)", pub)
+	case "devices.offers":
+		return takeOffers(), nil
 	}
 	return a.devices(), nil
 }

@@ -358,7 +358,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return shellInfo(s.a.config()), nil
 	case "plugins.list":
 		return s.a.plugins.List(), nil
-	case "devices.list", "devices.pair", "devices.rename", "devices.remove":
+	case "devices.list", "devices.pair", "devices.rename", "devices.remove", "devices.offers":
 		if !s.local {
 			return nil, &rpcError{Code: "denied", Msg: "only this Mac's own app manages its devices"}
 		}

@@ -14,6 +14,7 @@ import 'package:uniai/net/link.dart';
 import 'package:uniai/net/store.dart';
 import 'package:uniai/app/home.dart';
 import 'package:uniai/features/devices/pair.dart';
+import 'package:uniai/features/devices/pair_back.dart';
 import 'package:uniai/app/theme.dart';
 
 void main() {
@@ -41,6 +42,8 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   List<MacPairing> _macs = [];
   Link? _link; // the Mac on screen, connected (or reconnecting)
   Link? _attempt; // a pairing in progress
+  Link? _self; // a desktop's own core, for pairing back (null on a phone)
+  PairBack? _back;
   bool _adding = false; // pairing another Mac
   Terms? _terms;
   Alerts? _alerts;
@@ -70,6 +73,10 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
     }
     if (!_canLock) _locked = false;
     if (p != null) _use(p);
+    if (MacPairing.hasLocal) {
+      final self = _self = Link(MacPairing.local(), null, deviceName: _name)..start();
+      _back = PairBack(self, name: () => _name, onPaired: _pairedBack)..start();
+    }
     setState(() => _ready = true);
     _unlock();
 
@@ -168,9 +175,10 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
     if (name == null) return;
     _name = name;
     (await SharedPreferences.getInstance()).setString('deviceName', name);
+    final back = await _back?.code(); // so that Mac pairs with this one too
     _attempt?.dispose();
     final withKey = p.withKey(Store.newKey()); // every Mac gets its own phone key
-    final a = Link(withKey, withKey.key, deviceName: name);
+    final a = Link(withKey, withKey.key, deviceName: name)..back = back;
     a.onPaired = (paired) {
       // Pairing a Mac again keeps the name the user gave it.
       final nick = _macs.where((m) => m.room == paired.room).firstOrNull?.nick;
@@ -191,6 +199,14 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
     };
     setState(() => _attempt = a);
     a.start();
+  }
+
+  /// Another Mac paired with this one, so this one paired back (saved already).
+  void _pairedBack(MacPairing p) {
+    if (_macs.any((m) => m.room == p.room) || !mounted) return;
+    setState(() => _macs = [..._macs, p]);
+    final ctx = _nav.currentContext;
+    if (ctx != null && ctx.mounted) toast(ctx, '${p.name} and this Mac are now paired both ways');
   }
 
   void _cancelAttempt() {
@@ -240,6 +256,8 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _links?.cancel();
     _attempt?.dispose();
+    _back?.dispose();
+    _self?.dispose();
     _drop();
     super.dispose();
   }

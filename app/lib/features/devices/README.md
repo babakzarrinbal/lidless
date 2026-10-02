@@ -6,11 +6,13 @@ devices paired to it, with a new pairing code (QR + text).
 
 Entry points: `PairScreen`, `ScanPage` (pair.dart), `MacsPage` (macs.dart, the
 Devices page), `PairedDevicesSection`, `PairCodeDialog` (devices.dart).
+`pair_back.dart` pairs two desktops both ways (`PairBack`, started by
+main.dart; docs/architecture.md, "Pairing").
 `devices_model.dart` is the `devices.*` RPC client (only the local link may ask;
 core side: cmd/uniai/devices.go). Pairings are stored by `lib/net/store.dart`;
 the connection is `lib/net/link.dart`.
 
-Tests: `test/features/devices/macs_test.dart`.
+Tests: `test/features/devices/macs_test.dart`, `pair_back_test.dart`.
 
 Traps:
 - Pairings live in `net/store.dart`; `devices_model.dart` is only the list of

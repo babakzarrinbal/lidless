@@ -196,6 +196,7 @@ type hello struct {
 	V    int    `json:"v"`
 	Name string `json:"name"`
 	Pair string `json:"pair,omitempty"`
+	Back string `json:"back,omitempty"` // with Pair: the device's own pairing code, to pair back (offers.go)
 }
 
 // authorize decides whether the phone holding pub may in. A phone that is not
@@ -239,6 +240,9 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	}
 	a.reload()
 	logf("paired new phone %q (%s…)", name, pub[:12])
+	if h.Back != "" {
+		a.keepOffer(h.Back)
+	}
 	return name, nil
 }
 
