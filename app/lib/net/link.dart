@@ -11,8 +11,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as c;
 import 'package:flutter/widgets.dart';
 
-import '../crypto/noise.dart';
-import 'store.dart';
+import 'package:uniai/crypto/noise.dart';
+import 'package:uniai/net/store.dart';
 
 enum LinkState { connecting, online, offline, refused }
 

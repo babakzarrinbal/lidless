@@ -6,7 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../crypto/noise.dart';
+import 'package:uniai/crypto/noise.dart';
 
 class MacPairing {
   final String relay; // host:port

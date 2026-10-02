@@ -1,3 +1,4 @@
+// App entry: loads the pairings, builds the MacRemote root and routes between pairing and Home.
 import 'dart:async';
 import 'dart:io';
 
@@ -7,13 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'model/alerts.dart';
-import 'model/terms.dart';
-import 'net/link.dart';
-import 'net/store.dart';
-import 'ui/home.dart';
-import 'ui/pair.dart';
-import 'ui/theme.dart';
+import 'package:uniai/features/alerts/alerts.dart';
+import 'package:uniai/features/terminals/terms.dart';
+import 'package:uniai/net/link.dart';
+import 'package:uniai/net/store.dart';
+import 'package:uniai/app/home.dart';
+import 'package:uniai/features/devices/pair.dart';
+import 'package:uniai/app/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
