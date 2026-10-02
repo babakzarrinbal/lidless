@@ -75,11 +75,29 @@ class WheelFix implements TerminalMouseHandler {
   }
 }
 
+/// xterm 4.0's full-screen buffer loses track of its lines when it scrolls
+/// (Buffer.scrollUp moves them with swap, which detaches the line it moves).
+/// A selection anchored on a detached line reads as none, so nothing in
+/// Copilot or another full-screen app could be selected. This puts every line
+/// back in place; it costs a pass over one screen of lines.
+void reattachLines(Terminal t) {
+  final lines = t.buffer.lines;
+  for (var i = 0; i < lines.length; i++) {
+    if (!lines[i].attached) {
+      lines.replaceWith(lines.toList());
+      return;
+    }
+  }
+}
+
 class _TermSink implements Sink<String> {
   final Terminal t;
   _TermSink(this.t);
   @override
-  void add(String s) => t.write(s);
+  void add(String s) {
+    t.write(s);
+    if (t.isUsingAltBuffer) reattachLines(t);
+  }
   @override
   void close() {}
 }

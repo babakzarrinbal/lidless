@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
+import 'package:uniai/features/terminals/term_select.dart';
 import 'package:uniai/features/terminals/term_tab.dart';
 import 'package:uniai/features/terminals/session.dart';
 import 'package:uniai/features/terminals/terms.dart';
@@ -166,6 +167,7 @@ class TermSurface extends StatefulWidget {
 class TermSurfaceState extends State<TermSurface> with WidgetsBindingObserver {
   final _view = GlobalKey<TerminalViewState>();
   final _focus = FocusNode();
+  final _scroll = ScrollController();
   final typing = ValueNotifier(false);
   bool _kbSeen = false; // the keyboard has shown since typing turned on
 
@@ -193,6 +195,7 @@ class TermSurfaceState extends State<TermSurface> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _focus.dispose();
+    _scroll.dispose();
     typing.dispose();
     super.dispose();
   }
@@ -244,17 +247,25 @@ class TermSurfaceState extends State<TermSurface> with WidgetsBindingObserver {
     }
     return Stack(children: [
       Positioned.fill(
-        child: TerminalView(
-          t.terminal,
-          key: _view,
-          controller: t.controller,
-          focusNode: _focus,
-          theme: termTheme,
-          textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: mono),
-          padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-          deleteDetection: true,
-          cursorType: TerminalCursorType.block,
-          readOnly: t.exited || !_typing,
+        child: TermSelect(
+          tab: t,
+          view: _view,
+          scroll: _scroll,
+          onCopy: () => _copy(t),
+          builder: (menu) => TerminalView(
+            t.terminal,
+            key: _view,
+            controller: t.controller,
+            scrollController: _scroll,
+            focusNode: _focus,
+            theme: termTheme,
+            textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: mono),
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            deleteDetection: true,
+            cursorType: TerminalCursorType.block,
+            readOnly: t.exited || !_typing,
+            onSecondaryTapDown: menu,
+          ),
         ),
       ),
       Positioned(
