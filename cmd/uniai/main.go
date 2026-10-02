@@ -18,8 +18,6 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -122,15 +120,6 @@ func cmdInit(args []string) {
 	fmt.Println("created", configPath())
 }
 
-type pairCode struct {
-	Relay string `json:"r"`
-	Pin   string `json:"p"`
-	Room  string `json:"m"`
-	Key   string `json:"k"`
-	Token string `json:"t"`
-	Host  string `json:"n"`
-}
-
 func cmdPair(args []string) {
 	fs := flag.NewFlagSet("pair", flag.ExitOnError)
 	codeOnly := fs.Bool("code", false, "print only the pairing code and exit")
@@ -143,12 +132,10 @@ func cmdPair(args []string) {
 	if err != nil {
 		die("%v", err)
 	}
-	p := Pairing{Token: randHex(16), Expires: time.Now().Add(10 * time.Minute)}
-	if err := writeJSON0600(pairingPath(), p); err != nil {
+	code, p, err := newPairCode(c)
+	if err != nil {
 		die("%v", err)
 	}
-	b, _ := json.Marshal(pairCode{c.Relay, c.Pin, c.Room, c.Pub, p.Token, computerName()})
-	code := "mr1." + base64.RawURLEncoding.EncodeToString(b)
 	if *codeOnly {
 		fmt.Println(code)
 		return

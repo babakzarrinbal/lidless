@@ -215,13 +215,13 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	// racing with the same code cannot both get in. A wrong code puts it back.
 	claimed := pairingPath() + ".claimed"
 	if err := os.Rename(pairingPath(), claimed); err != nil {
-		return "", errors.New("pairing code expired or already used; run `uniai pair` again")
+		return "", errors.New("pairing code expired or already used; make a new one")
 	}
 	var p Pairing
 	b, err := os.ReadFile(claimed)
 	if err != nil || json.Unmarshal(b, &p) != nil || time.Now().After(p.Expires) {
 		os.Remove(claimed)
-		return "", errors.New("pairing code expired; run `uniai pair` again")
+		return "", errors.New("pairing code expired; make a new one")
 	}
 	if subtle.ConstantTimeCompare([]byte(p.Token), []byte(h.Pair)) != 1 {
 		os.Rename(claimed, pairingPath())
@@ -342,11 +342,17 @@ func (s *Session) run() {
 	s.a.mu.Lock()
 	s.a.sessions[s] = struct{}{}
 	s.a.mu.Unlock()
+	if !s.local {
+		s.a.devicesChanged() // online
+	}
 	defer func() {
 		s.a.mu.Lock()
 		delete(s.a.sessions, s)
 		s.a.mu.Unlock()
 		logf("disconnected: %s", s.device)
+		if !s.local {
+			s.a.devicesChanged()
+		}
 	}()
 
 	go s.writer()
@@ -577,6 +583,8 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Seen    int64  `json:"seen"`
 		Size    int64  `json:"size"`
 		VSCode  bool   `json:"vscode"` // chat.sessions/recent: VS Code's chats too (an app that can show them)
+		Pub     string `json:"pub"`    // devices.*: the phone's key
+		Name    string `json:"name"`   // devices.rename
 	}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -782,6 +790,11 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return shellInfo(s.a.config()), nil
 	case "plugins.list":
 		return s.a.plugins.List(), nil
+	case "devices.list", "devices.pair", "devices.rename", "devices.remove":
+		if !s.local {
+			return nil, &rpcError{Code: "denied", Msg: "only this Mac's own app manages its devices"}
+		}
+		return s.a.deviceCall(method, p.Pub, p.Name)
 	}
 	if m := s.a.plugins.Lookup(method); m != nil {
 		if m.Write {
