@@ -61,7 +61,7 @@ onto the same terminal. While a laptop window is attached, its size wins.
 Copilot is started as `copilot` from a login shell: `~/.local/bin/copilot`
 links to VS Code's Copilot CLI shim.
 
-Wire format, framing and RPC methods: the header of `cmd/uniai/session.go`
+Wire format, framing and RPC methods: the header of `cmd/uniai/wire.go`
 and `app/lib/net/link.dart`.
 
 ## Commands

@@ -42,7 +42,7 @@ Consequences:
 - Opening a session anywhere makes it visible everywhere. There is nothing to
   "move": the agent sends `{"ev":"terms"}` to every phone when a terminal comes
   or goes, and phones adopt new ones live (`Terms._refresh` in
-  `app/lib/model/terms.dart`). A laptop sees them with `uniai ls`.
+  `app/lib/features/terminals/terms.dart`). A laptop sees them with `uniai ls`.
 - Input from any client goes to the same pty. Everyone sees the same screen.
 - Restarting or upgrading the agent (`agent-install`, `brew upgrade`) does not
   end terminals. The new agent re-adopts the holders. The plist sets
@@ -127,7 +127,7 @@ parked. Parked state lives only in the agent's memory.
 
 - `lib/net/link.dart`: one connection per Mac, reconnects, RPC calls with
   timeouts, `termOut` callbacks per terminal id, the `events` stream.
-- `lib/model/terms.dart`: `_sync` after every (re)connect adopts the Mac's
+- `lib/features/terminals/terms.dart`: `_sync` after every (re)connect adopts the Mac's
   list and resumes each tab from its offset. `_refresh` on `terms` events
   adopts only new terminals and marks gone ones ended. `open()` keeps one tab
   when the event beats the reply. The status dots (working / unread / read /

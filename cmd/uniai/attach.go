@@ -1,7 +1,7 @@
 package main
 
 // The laptop's side of shared terminals: `uniai claude` starts Claude in
-// a holder (hold.go) and shows it in this window, so the phones see the same
+// a holder (internal/holder) and shows it in this window, so the phones see the same
 // terminal; `uniai attach` joins any terminal a phone or another window
 // started. Leaving the window (Ctrl-], or closing it) leaves the terminal
 // running for everyone else.

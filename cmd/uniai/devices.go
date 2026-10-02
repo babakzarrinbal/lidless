@@ -11,7 +11,7 @@ import (
 
 // Devices paired with this Mac, managed from this Mac's own app: a new
 // pairing code, the list, rename, remove. Only the local session may ask
-// (session.go); a phone cannot add or drop other phones.
+// (rpc.go); a phone cannot add or drop other phones.
 
 type pairCode struct {
 	Relay string `json:"r"`

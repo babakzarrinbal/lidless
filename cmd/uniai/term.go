@@ -1,7 +1,7 @@
 package main
 
 // The agent's view of the terminals. Each one runs in its own holder process
-// (hold.go), which outlives the agent; the agent is one of its clients. It
+// (internal/holder), which outlives the agent; the agent is one of its clients. It
 // adopts every holder it finds, whoever started it (a phone, or
 // `uniai claude` on the laptop), and mirrors its output for the phones.
 
@@ -117,7 +117,7 @@ func (t *Term) write(p []byte) {
 }
 
 // resize is the phones' size; a laptop window attached to the same terminal
-// wins over it (see hold.go).
+// wins over it (see internal/holder).
 func (t *Term) resize(cols, rows uint16) {
 	if cols == 0 || rows == 0 {
 		return

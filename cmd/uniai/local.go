@@ -14,7 +14,7 @@ import (
 )
 
 // The app on this Mac talks to its own core over a unix socket in the config
-// folder: the same app messages as a phone session (session.go), as a
+// folder: the same app messages as a phone session (wire.go, rpc.go), as a
 // WebSocket, but without the relay and without Noise. The folder and the
 // socket are the owner's only, so whoever connects is this user.
 //

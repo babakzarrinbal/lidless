@@ -1,3 +1,6 @@
+// The device-facing wire: the relay and local transports, the Noise_IK
+// handshake, framing and sessions. The wire format is the comment below the
+// imports; the methods are in rpc.go.
 package main
 
 import (

@@ -119,18 +119,25 @@ DevOps pipelines, Jira, Confluence, Kubernetes, Argo.
 
 ## Layout
 
-The Go module stays at the root; packages move out of `cmd/uniai` as
-they are touched.
+The Go module stays at the root. `cmd/uniai` keeps only what needs the
+running agent; everything else is a package under `internal/`. The app is
+split by feature. Each module has a README; `./dev.sh map` lists them.
 
 ```
-cmd/uniai      daemon + CLI (the core)        cmd/relay, cmd/noisevec
+cmd/uniai          daemon + CLI: wire, rpc switch, terms, devices, local socket
+cmd/relay, cmd/noisevec
+internal/holder    the pty holder process and its protocol
+internal/transcript  Claude, Copilot, VS Code chat readers + VS Code mirror
+internal/usage     context, limits, token ledger
+internal/{fsops,config,rpc,ulog,shellenv}
 internal/plugin    registry: Method, Ctx, plugins.list
-internal/plugins/  git, later fs, term, ado, jira, k8s…
-app/               the Flutter app: android, ios, macos (then windows, linux)
-  lib/net          protocol: Noise, Link, transports
-  lib/model        workspaces, sessions, terminals
-  lib/plugins/     plugin panels
-  lib/ui           shells: phone layout, desktop layout
+internal/plugins/  git, later term, ado, jira, k8s…
+app/               the Flutter app: android, macos (then ios, windows, linux)
+  lib/net          protocol: Link, transports, pairings
+  lib/crypto       Noise
+  lib/app          Home, session view, theme: the frame around features
+  lib/features/    devices, terminals, chat, files, workspaces, alerts
+  lib/plugins/     plugin panels (to come)
 ```
 
 ## Phases

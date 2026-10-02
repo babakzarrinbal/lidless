@@ -2,7 +2,7 @@
 // session inside it, and a small RPC + terminal stream protocol on top. The
 // core on this device itself is reached over its unix socket instead, with
 // the same frames in the clear (cmd/uniai/local.go).
-// Wire format: see cmd/uniai/session.go.
+// Wire format: see cmd/uniai/wire.go (header) and rpc.go.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

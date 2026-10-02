@@ -300,7 +300,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return err == nil
 		})
 	case "chat.handoff": // a VS Code chat written out for an agent in a shared terminal: {"path", "prompt"}
-		go func() { // so VS Code opens that terminal too (vscodemirror.go)
+		go func() { // so VS Code opens that terminal too (internal/transcript/vscodemirror.go)
 			if msg, err := transcript.VSCodeExtInstall(false); err != nil {
 				logf("vscode extension: %v", err)
 			} else if strings.HasPrefix(msg, "installed") {
