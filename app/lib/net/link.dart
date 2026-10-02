@@ -49,7 +49,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   WebSocket? _ws;
   CipherState? _send, _recv;
   bool _plain = false; // the local core: frames go unencrypted
-  bool _started = false; // tried to start the bundled core once
+  bool _started = false; // ran the bundled core's install once
   final _acc = BytesBuilder(copy: false);
   final _pending = <int, Completer<dynamic>>{};
   int _nextId = 1, _gen = 0, _backoff = 1;
@@ -122,6 +122,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
     final gen = ++_gen;
     _set(LinkState.connecting, error);
     final local = pairing.isLocal;
+    if (local && !_started) await _startCore();
     WebSocket ws;
     try {
       ws = local
@@ -135,7 +136,6 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
           'Someone may be intercepting the connection.');
     } catch (e) {
       if (local) {
-        if (!_started) _startCore();
         return _fail(gen, 'The core on this Mac is not running yet.');
       }
       return _fail(gen, _netErr(e));
@@ -203,18 +203,18 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
         .timeout(const Duration(seconds: 5));
   }
 
-  /// The app carries its core (Contents/MacOS/uniai): installing it starts it
-  /// as this user's LaunchAgent, which then outlives the app.
+  /// The app carries its core (Contents/MacOS/uniai): once per start it
+  /// installs it as this user's LaunchAgent (which outlives the app) unless a
+  /// newer core already runs, so updating the app updates the core.
   Future<void> _startCore() async {
     _started = true;
     final exe = '${File(Platform.resolvedExecutable).parent.path}/uniai';
     if (!File(exe).existsSync()) return;
     try {
-      final r = await Process.run(exe, ['install']);
-      debugPrint('uniai: core install ${r.exitCode} ${r.stderr}');
-      reconnectNow();
+      final r = await Process.run(exe, ['install', '-if-newer']);
+      if (r.exitCode != 0 || '${r.stdout}'.isNotEmpty) debugPrint('link: core install ${r.exitCode} ${r.stdout}${r.stderr}');
     } catch (e) {
-      debugPrint('uniai: core install failed: $e');
+      debugPrint('link: core install failed: $e');
     }
   }
 

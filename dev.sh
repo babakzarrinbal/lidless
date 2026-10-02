@@ -7,7 +7,7 @@
 #   ./dev.sh test <module>         one module's tests: internal/x, cmd/uniai, a feature name, app/test/x.dart
 #   ./dev.sh go-check              go vet + tests (Docker)
 #   ./dev.sh go <args…>            any go command in Docker (e.g. go get, go test -run X ./cmd/uniai)
-#   ./dev.sh agent                 build bin/uniai (darwin/arm64)
+#   ./dev.sh agent                 build bin/uniai (darwin, arm64 + x86_64)
 #   ./dev.sh agent-install         build, init against the relay, install the LaunchAgent
 #   ./dev.sh mac-kit               build/Uniai.zip: agent + install.sh for another Mac
 #   ./dev.sh brew [version]        build/brew/: release tarballs + Homebrew formula, generic: `uniai setup <relay>` after install
@@ -24,7 +24,8 @@
 #   ./dev.sh icons                 render the app icon (Android, macOS, site) from app/assets/icon/*.svg
 #   ./dev.sh app-pub <args…>       flutter pub (add <pkg>, get, outdated)
 #   ./dev.sh apk                   release APK
-#   ./dev.sh mac-app | mac-run     the Mac app (Flutter macos target), build | build + open
+#   ./dev.sh mac-app | mac-run     the Mac app (Flutter macos target, core inside), build | build + open
+#   ./dev.sh mac-zip               build/bz-uniai-mac.zip: that app for another Mac (all it needs)
 #   ./dev.sh install               release APK → the Samsung (ANDROID_SERIAL overrides)
 #   ./dev.sh run                   install + launch + follow logs
 #   ./dev.sh pair-adb              send a fresh pairing link to the phone over adb
@@ -133,9 +134,14 @@ cmd_test() {
   esac
 }
 
+# bin/uniai for Apple silicon and Intel, stamped with its build time: the Mac
+# app replaces the running core only with a newer one (cmd/uniai/install.go).
 cmd_agent() {
-  quiet agent-build gorun darwin arm64 go build -trimpath -ldflags=-s -o bin/uniai ./cmd/uniai
-  ls -la bin/uniai | awk '{print "bin/uniai", $5, "bytes"}'
+  local v; v=$(date -u +%Y%m%d.%H%M%S)
+  quiet agent-build gorun darwin arm64 go build -trimpath -ldflags="-s -X main.version=$v" -o bin/uniai-arm64 ./cmd/uniai || return 1
+  quiet agent-build-amd64 gorun darwin amd64 go build -trimpath -ldflags="-s -X main.version=$v" -o bin/uniai-amd64 ./cmd/uniai || return 1
+  lipo -create -output bin/uniai bin/uniai-arm64 bin/uniai-amd64 && rm bin/uniai-arm64 bin/uniai-amd64
+  ls -la bin/uniai | awk -v v="$v" '{print "bin/uniai", $5, "bytes, version", v}'
 }
 
 # A zip for another Mac (no repo, Docker or Go there): both binaries and an
@@ -234,8 +240,6 @@ cmd_agent-install() {
     bin/uniai init -relay "$RELAY_HOST:$RELAY_PORT" -pin "$pin"
   fi
   bin/uniai install
-  mkdir -p "$HOME/.local/bin"
-  ln -sf "$HOME/Library/Application Support/Uniai/uniai" "$HOME/.local/bin/uniai"
 }
 
 cmd_relay-deploy() {
@@ -312,8 +316,10 @@ cmd_apk() {
 }
 
 MAC_APP=app/build/macos/Build/Products/Release/bz-uniai.app
-# The app carries its core (Contents/MacOS/uniai) and installs it as this
-# user's LaunchAgent when it finds none running. Adding a file breaks the
+# The app carries its core (Contents/MacOS/uniai) and, at every start, installs
+# it as this user's LaunchAgent unless a newer one runs. With .server.env it
+# also carries the relay (Contents/Resources/relay, never in the repo), so a new
+# Mac needs only the app. Adding a file breaks the
 # bundle's signature, so it is signed again, entitlements kept. With an Apple
 # Development identity the keychain sees the same app on every build and asks
 # for access once; signed ad hoc (no identity) it asks after every build.
@@ -321,6 +327,9 @@ cmd_mac-app() {
   cmd_agent >/dev/null || { echo "FAIL agent-build (log: $LOGS/agent-build.log)"; return 1; }
   (cd app && quiet mac-app flutter build macos --release) || return 1
   cp bin/uniai "$MAC_APP/Contents/MacOS/uniai"
+  if [ -n "$RELAY_HOST" ]; then
+    echo "$RELAY_HOST:$RELAY_PORT $(cmd_relay-pin)" > "$MAC_APP/Contents/Resources/relay"
+  fi
   local id; id=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -o '"Apple Development[^"]*"' | tr -d '"')
   [ -n "$id" ] || { id=-; echo "no Apple Development identity: signing ad hoc (the keychain asks after every build)"; }
   codesign -f -s "$id" "$MAC_APP/Contents/MacOS/uniai" 2>/dev/null
@@ -328,6 +337,14 @@ cmd_mac-app() {
   du -sh "$MAC_APP" | awk '{print "bz-uniai.app", $1, "(core inside)"}'
 }
 cmd_mac-run() { cmd_mac-app; open "$MAC_APP"; }
+
+# build/bz-uniai-mac.zip: the app for another Mac, the only thing it needs.
+cmd_mac-zip() {
+  cmd_mac-app || return 1
+  rm -f build/bz-uniai-mac.zip
+  ditto -c -k --keepParent "$MAC_APP" build/bz-uniai-mac.zip
+  ls -la build/bz-uniai-mac.zip | awk '{print "build/bz-uniai-mac.zip", $5, "bytes"}'
+}
 
 cmd_install() {
   need_phone

@@ -24,9 +24,12 @@ phone ──WSS──▶ relay (your.server:8460) ◀──WSS── uniai agent
 
 ## Install
 
-On the Mac, run `brew install babakzarrinbal/uniai/uniai`, then
-`uniai setup your.server:8460`, then scan the code with the app. The package
-is generic: you name your relay with `setup`. To run a relay, see
+On a Mac, install the app: `./dev.sh mac-zip` builds `build/bz-uniai-mac.zip`.
+The app carries the core and, at every start, installs it as a LaunchAgent
+(unless a newer one runs), along with the `uniai` command and the
+claude/copilot shell aliases. Built with `.server.env`, it also carries your
+relay, so phones pair from its Devices page. Without the app:
+`brew install babakzarrinbal/uniai/uniai`, then `uniai setup your.server:8460`. To run a relay, see
 [docs/hosting.md](docs/hosting.md).
 
 ## Sessions
@@ -71,7 +74,7 @@ Working on it: [AGENTS.md](AGENTS.md) (notes for coding agents and humans) and
 `./dev.sh` lists everything. Common ones:
 
 - `./dev.sh agent-install` — build the agent, init it against the relay, install
-  the LaunchAgent and link `~/.local/bin/uniai`.
+  the LaunchAgent and link `~/.local/bin/uniai` (the Mac app does the same).
 - `uniai pair | devices | revoke <n> | status` — on the Mac.
 - `uniai ls | attach [id] | kill <id> | claude | shell-setup` — shared
   terminals on the Mac.

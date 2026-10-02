@@ -83,7 +83,7 @@ func cmdSetup(args []string) {
 		}
 		fmt.Println("agent running (brew services); it starts at every login")
 	} else {
-		cmdInstall()
+		cmdInstall(nil)
 	}
 	if !*noPair {
 		fmt.Println()

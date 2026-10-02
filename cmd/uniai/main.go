@@ -7,7 +7,7 @@
 //	uniai pair [-code] [-png file]              pair a phone (QR, 10 min)
 //	uniai devices                               list paired phones
 //	uniai revoke <n|name>                       remove a phone
-//	uniai install | uninstall                   LaunchAgent (starts at login)
+//	uniai install [-if-newer] | uninstall       LaunchAgent (starts at login), the uniai command, shell aliases
 //	uniai status                                config + agent state
 //	uniai serve                                 run in the foreground
 //	uniai ls                                    the Mac's shared terminals
@@ -20,14 +20,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -53,7 +50,7 @@ func die(format string, a ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: uniai setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls [--json]|attach|kill|claude|copilot|shell-setup|vscode")
+		fmt.Fprintln(os.Stderr, "usage: uniai setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls [--json]|attach|kill|claude|copilot|shell-setup|version")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
@@ -69,7 +66,7 @@ func main() {
 	case "revoke":
 		cmdRevoke(args)
 	case "install":
-		cmdInstall()
+		cmdInstall(args)
 	case "uninstall":
 		cmdUninstall()
 	case "status":
@@ -94,6 +91,8 @@ func main() {
 		cmdAgentCLI(os.Args[1], args)
 	case "shell-setup":
 		cmdShellSetup(args)
+	case "version":
+		fmt.Println(version)
 	default:
 		die("unknown command %q", os.Args[1])
 	}
@@ -212,125 +211,6 @@ func cmdRevoke(args []string) {
 		die("%v", err)
 	}
 	fmt.Printf("removed %s (its open sessions close within seconds)\n", name)
-}
-
-func plistPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", label+".plist")
-}
-
-func logPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "Logs", "uniai.log")
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	tmp := dst + ".new"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
-}
-
-func launchctl(args ...string) error {
-	out, err := exec.Command("launchctl", args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("launchctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
-
-func cmdInstall() {
-	if _, err := config.Ensure(); err != nil {
-		die("%v", err)
-	}
-	if brewServiceLoaded() {
-		die("%s; `install` would start a second copy", brewServiceHint())
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		die("%v", err)
-	}
-	if err := os.MkdirAll(config.SupportDir(), 0o700); err != nil {
-		die("%v", err)
-	}
-	bin := filepath.Join(config.SupportDir(), "uniai")
-	if exe != bin {
-		if err := copyFile(exe, bin); err != nil {
-			die("%v", err)
-		}
-	}
-	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key><string>%s</string>
-	<key>ProgramArguments</key><array><string>%s</string><string>serve</string></array>
-	<key>RunAtLoad</key><true/>
-	<key>KeepAlive</key><true/>
-	<key>ProcessType</key><string>Interactive</string>
-	<key>AbandonProcessGroup</key><true/>
-	<key>StandardOutPath</key><string>%s</string>
-	<key>StandardErrorPath</key><string>%s</string>
-</dict>
-</plist>
-`, label, bin, logPath(), logPath())
-	os.MkdirAll(filepath.Dir(plistPath()), 0o755)
-	if err := os.WriteFile(plistPath(), []byte(plist), 0o644); err != nil {
-		die("%v", err)
-	}
-	// Run from a phone's terminal, stopping the agent can end this process
-	// (an agent from before holders took its terminals with it), and the
-	// agent would never start again: a detached copy restarts it.
-	log, err := os.OpenFile(logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		die("%v", err)
-	}
-	cmd := exec.Command(bin, "reload")
-	cmd.Stdout, cmd.Stderr = log, log
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		die("%v", err)
-	}
-	if err := cmd.Wait(); err != nil {
-		die("restarting the agent failed (%v); see %s", err, logPath())
-	}
-	fmt.Println("installed; the agent starts at login. Log:", logPath())
-}
-
-// cmdReload (re)starts the LaunchAgent; `install` runs it detached.
-func cmdReload() {
-	launchctl("bootout", domain()+"/"+label) // fine if it was not loaded
-	// The old agent may still be stopping: bootstrap then fails with EIO.
-	err := launchctl("bootstrap", domain(), plistPath())
-	for i := 0; err != nil && i < 10; i++ {
-		time.Sleep(500 * time.Millisecond)
-		err = launchctl("bootstrap", domain(), plistPath())
-	}
-	if err != nil {
-		die("reload: %v", err)
-	}
-}
-
-func cmdUninstall() {
-	launchctl("bootout", domain()+"/"+label)
-	os.Remove(plistPath())
-	fmt.Println("agent stopped and removed from login (config kept in", config.Dir()+")")
 }
 
 func cmdStatus() {

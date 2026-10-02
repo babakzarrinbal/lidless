@@ -44,7 +44,7 @@ module alone (`internal/holder`, `cmd/uniai`, `devices`, `app/test/x.dart`).
 
 | Path | What |
 |---|---|
-| `cmd/uniai/` | The core (Go agent) and its CLI: what needs the running agent. `wire.go`: transports (relay, local socket), Noise handshake, sessions; the wire format is its header comment. `rpc.go`: the method switch (`call`). `term.go`: adopts holders, mirrors their output, sends `{"ev":"terms"}`. `devices.go`: this Mac's paired phones (local session only). `local.go`: the unix socket for this Mac's own app. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `plugins.go`, `shell.go`, `lock.go` (one agent per Mac), `lid.go`, `setup.go`, `main.go` (CLI, LaunchAgent). |
+| `cmd/uniai/` | The core (Go agent) and its CLI: what needs the running agent. `wire.go`: transports (relay, local socket), Noise handshake, sessions; the wire format is its header comment. `rpc.go`: the method switch (`call`). `term.go`: adopts holders, mirrors their output, sends `{"ev":"terms"}`. `devices.go`: this Mac's paired phones (local session only). `local.go`: the unix socket for this Mac's own app. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `plugins.go`, `shell.go`, `lock.go` (one agent per Mac), `lid.go`, `setup.go`, `install.go` (LaunchAgent, `uniai` link, shell aliases; the Mac app runs `install -if-newer` at every start), `main.go` (CLI). |
 | `internal/holder/` | The holder process that owns each terminal's pty and outlives the agent, and its socket protocol (docs/architecture.md, "Holder protocol"). |
 | `internal/transcript/` | Reading Claude, Copilot CLI and VS Code Copilot Chat transcripts (`chat.*`); quitting an outside Claude/Copilot and handing a VS Code chat to Copilot, so "Move here" carries it on in a shared terminal. |
 | `internal/usage/` | Context window, plan limits, the token ledger (`usage`, `tokens.reset`). |
@@ -78,6 +78,7 @@ through brew.
 ./dev.sh agent                  # bin/uniai (darwin/arm64)
 ./dev.sh agent-install          # build + install as this Mac's LaunchAgent (restarts the agent; terminals survive)
 ./dev.sh apk | install | run    # release APK; install onto the Samsung (ANDROID_SERIAL overrides)
+./dev.sh mac-app | mac-zip      # the Mac app with its core (and the relay, from .server.env); zip for another Mac
 ./dev.sh log                    # agent log tail (~/Library/Logs/uniai.log)
 ```
 Running `./dev.sh` with no command lists the rest. Output is already a summary; full logs go to `build/logs/`.
