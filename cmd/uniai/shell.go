@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"os/user"
 	"strings"
+
+	"uniai/internal/config"
 )
 
 // shells lists the login shells this Mac offers (/etc/shells), those that exist.
@@ -66,7 +68,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func shellInfo(cfg *Config) map[string]any {
+func shellInfo(cfg *config.Config) map[string]any {
 	return map[string]any{"shells": shells(), "default": cfg.Shell, "login": loginShell()}
 }
 
@@ -80,7 +82,7 @@ func (a *Agent) setShell(shell string) error {
 	nc := *a.cfg
 	nc.Shell = shell
 	a.mu.Unlock()
-	if err := nc.save(); err != nil {
+	if err := nc.Save(); err != nil {
 		return err
 	}
 	a.reload()

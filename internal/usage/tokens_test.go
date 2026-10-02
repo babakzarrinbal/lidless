@@ -1,4 +1,4 @@
-package main
+package usage
 
 import (
 	"fmt"
@@ -49,7 +49,7 @@ func (f *tokenFixture) write(rel, text string, appendTo bool) string {
 func (f *tokenFixture) totals() map[string]int64 {
 	f.l.at = time.Time{}
 	out := map[string]int64{}
-	for _, a := range f.l.tokenTotals() {
+	for _, a := range f.l.TokenTotals() {
 		out[a["tool"].(string)+"|"+a["account"].(string)] = a["total"].(int64)
 	}
 	return out
@@ -72,10 +72,10 @@ func TestTokensCountOnceAndPerChat(t *testing.T) {
 	if got := f.totals()["claude|a@x.com"]; got != 370+10+100+1000 {
 		t.Fatalf("total %d", got)
 	}
-	if got := f.l.chatTokens(main)["total"]; got != int64(370+10+100) {
+	if got := f.l.ChatTokens(main)["total"]; got != int64(370+10+100) {
 		t.Fatalf("s1 with its subagent: %v", got)
 	}
-	if got := f.l.chatTokens(filepath.Join(f.claude, "projects", "-p", "s2.jsonl"))["total"]; got != int64(1000) {
+	if got := f.l.ChatTokens(filepath.Join(f.claude, "projects", "-p", "s2.jsonl"))["total"]; got != int64(1000) {
 		t.Fatalf("s2: %v", got)
 	}
 
@@ -106,12 +106,12 @@ func TestTokensFollowTheAccount(t *testing.T) {
 	if got["claude|a@x.com"] != 7 || got["claude|b@y.com"] != 9 {
 		t.Fatalf("%v", got)
 	}
-	used := f.l.chatTokens(filepath.Join(f.claude, "projects", "-p", "s1.jsonl"))
+	used := f.l.ChatTokens(filepath.Join(f.claude, "projects", "-p", "s1.jsonl"))
 	if accts := used["accounts"].([]string); len(accts) != 2 || accts[0] != "a@x.com" || accts[1] != "b@y.com" {
 		t.Fatalf("accounts %v", accts)
 	}
 	// The signed-in account comes first.
-	if first := f.l.tokenTotals()[0]["account"]; first != "b@y.com" {
+	if first := f.l.TokenTotals()[0]["account"]; first != "b@y.com" {
 		t.Fatalf("first %v", first)
 	}
 }
@@ -120,12 +120,12 @@ func TestTokensReset(t *testing.T) {
 	f := newTokenFixture(t)
 	f.write("-p/s1.jsonl", answer("m1", "2026-09-01T10:00:00Z", 50, 0, 0, 0), false)
 	f.totals()
-	if !f.l.reset("claude", "a@x.com") || f.l.reset("claude", "nobody") {
+	if !f.l.Reset("claude", "a@x.com") || f.l.Reset("claude", "nobody") {
 		t.Fatal("reset")
 	}
 	f.write("-p/s1.jsonl", answer("m2", "2026-09-01T10:00:00Z", 8, 0, 0, 0), true)
 	f.l.at = time.Time{}
-	a := f.l.tokenTotals()[0]
+	a := f.l.TokenTotals()[0]
 	if a["total"] != int64(8) || a["all"] != int64(58) || a["reset"] != true {
 		t.Fatalf("%v", a)
 	}

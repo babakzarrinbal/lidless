@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"uniai/internal/config"
 )
 
 func TestLocal(t *testing.T) {
@@ -18,7 +20,7 @@ func TestLocal(t *testing.T) {
 	}
 	defer os.RemoveAll(home)
 	t.Setenv("HOME", home)
-	c, err := ensureConfig()
+	c, err := config.Ensure()
 	if err != nil || c.Relay != "" || c.KeepAwake || c.Pub == "" {
 		t.Fatalf("config for this Mac alone: %+v %v", c, err)
 	}
@@ -61,7 +63,7 @@ func TestLocal(t *testing.T) {
 		t.Fatalf("plugins.list: %s", m[2:])
 	}
 	// The local app is not a paired phone: a config reload keeps it.
-	os.Chtimes(configPath(), time.Now(), time.Now().Add(time.Second))
+	os.Chtimes(config.Path(), time.Now(), time.Now().Add(time.Second))
 	a.reload()
 	a.mu.Lock()
 	n := len(a.sessions)

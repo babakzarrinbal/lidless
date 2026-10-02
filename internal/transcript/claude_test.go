@@ -1,38 +1,32 @@
-package main
+package transcript
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-func TestStatusLine(t *testing.T) {
-	var s statusSnap
-	json.Unmarshal([]byte(`{"session_id":"abc-12345678","model":{"display_name":"Opus 5.5"},
-		"context_window":{"context_window_size":1000000,"used_percentage":12,"current_usage":{"input_tokens":2,"cache_creation_input_tokens":4470,"cache_read_input_tokens":123412}},
-		"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1738425600},"seven_day":{"used_percentage":41.2,"resets_at":1738857600}}}`), &s)
-	if got := statusLine(s); got != "Opus 5.5 · ctx 127k/1.0M · 5h 24% · 7d 41%" {
-		t.Fatal(got)
+func TestChatRecentAcrossFolders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	write := func(dir, id, text string, age time.Duration) {
+		p := filepath.Join(ClaudeProjectDir(dir), id+".jsonl")
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(`{"type":"user","cwd":"`+dir+`","message":{"role":"user","content":"`+text+`"}}`+"\n"), 0o600)
+		at := time.Now().Add(-age)
+		os.Chtimes(p, at, at)
 	}
-	if got := planName("default_claude_max_20x", "stripe"); got != "Max 20x" {
-		t.Fatal(got)
+	write("/w/a.b", "s1", "older", 2*time.Hour)
+	write("/w/c", "s2", "newest", time.Minute)
+	write("/secret", "s3", "hidden", 0)
+	got := ChatRecent(nil, 10, func(dir string) bool { return strings.HasPrefix(dir, "/w/") })
+	if len(got) != 2 || got[0].ID != "s2" || got[0].Dir != "/w/c" || got[1].Dir != "/w/a.b" || got[0].Title != "newest" {
+		t.Fatalf("%+v", got)
 	}
-}
-
-func TestAddStatusLine(t *testing.T) {
-	for _, in := range []string{"{}\n", "{\n  \"model\": \"opus\",\n  \"hooks\": {}\n}\n"} {
-		out, err := addStatusLine([]byte(in), `"/A B/uniai" statusline`)
-		if err != nil {
-			t.Fatal(in, err)
-		}
-		var m map[string]any
-		json.Unmarshal(out, &m)
-		sl, _ := m["statusLine"].(map[string]any)
-		if sl["command"] != `"/A B/uniai" statusline` || (strings.Contains(in, "model") && m["model"] != "opus") {
-			t.Fatalf("%s", out)
-		}
+	if one := ChatRecent(nil, 1, func(string) bool { return true }); len(one) != 1 || one[0].ID != "s3" {
+		t.Fatalf("%+v", one)
 	}
 }
 
@@ -67,7 +61,7 @@ func TestConversationTitleAndCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(d, ".claude", "commands", "git", "pr.md"), []byte("---\ndescription: Open a PR\n---\nbody"), 0o600)
 	os.WriteFile(filepath.Join(d, ".claude", "skills", "ship", "SKILL.md"), []byte("---\nname: ship\ndescription: \"Release it\"\n---\n"), 0o600)
 	got := map[string]SlashCommand{}
-	for _, c := range chatCommands(d, "claude") {
+	for _, c := range ChatCommands(d, "claude") {
 		got[c.Name] = c
 	}
 	if got["git:pr"].Desc != "Open a PR" || got["ship"].Desc != "Release it" || got["ship"].Src != "skill" || got["compact"].Src != "built-in" {

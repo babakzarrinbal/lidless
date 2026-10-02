@@ -22,15 +22,21 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"uniai/internal/config"
+	"uniai/internal/holder"
+	"uniai/internal/shellenv"
+	"uniai/internal/transcript"
+	"uniai/internal/usage"
 )
 
 const detachKey = 0x1d // Ctrl-]
 
 func cmdLs(args []string) {
-	l := holdList()
+	l := holder.List()
 	if len(args) > 0 && args[0] == "--json" { // for the VS Code extension
 		if l == nil {
-			l = []holdInfo{}
+			l = []holder.Info{}
 		}
 		json.NewEncoder(os.Stdout).Encode(l)
 		return
@@ -55,8 +61,8 @@ func cmdLs(args []string) {
 
 // cmdAttach joins a terminal: by id, by folder, or the only one there is.
 func cmdAttach(args []string) {
-	l := holdList()
-	var pick []holdInfo
+	l := holder.List()
+	var pick []holder.Info
 	switch {
 	case len(args) == 0:
 		cwd, _ := os.Getwd()
@@ -97,16 +103,16 @@ func cmdKill(args []string) {
 	if err != nil {
 		die("bad id %q", args[0])
 	}
-	c, _, err := dialHold(uint32(id))
+	c, _, err := holder.Dial(uint32(id))
 	if err != nil {
 		die("terminal %d: %v", id, err)
 	}
 	defer c.Close()
-	writeFrame(c, 'h')
+	holder.WriteFrame(c, 'h')
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
-	writeFrame(c, 'a', i64(-1))
+	holder.WriteFrame(c, 'a', holder.I64(-1))
 	for {
-		typ, _, err := readFrame(c)
+		typ, _, err := holder.ReadFrame(c)
 		if err != nil || typ == 'x' {
 			return
 		}
@@ -130,25 +136,25 @@ func cmdAgentCLI(tool string, args []string) {
 	}
 	if tool == "claude" {
 		if sid := resumeTarget(cwd, args); sid != "" {
-			if pid := claudeRunning()[sid]; pid != 0 {
+			if pid := transcript.ClaudeRunning()[sid]; pid != 0 {
 				if id := holderOf(pid); id != 0 {
 					fmt.Fprintf(os.Stderr, "uniai: joining terminal %d, where this conversation is open\n", id)
 					os.Exit(attachTerm(id))
 				}
 				fmt.Fprintf(os.Stderr, "uniai: quitting the Claude that has this conversation open elsewhere (pid %d)…\n", pid)
-				if err := stopClaude(sid); err != nil {
+				if err := transcript.StopClaude(sid); err != nil {
 					die("%v", err)
 				}
 			}
 		}
 	}
 	shell := loginShell()
-	if c, err := loadConfig(); err == nil {
+	if c, err := config.Load(); err == nil {
 		shell = pickShell("", c.Shell, shells())
 	}
 	q := []string{tool}
 	for _, a := range args {
-		q = append(q, shellQuote(a))
+		q = append(q, shellenv.Quote(a))
 	}
 	run := strings.Join(q, " ")
 	shell, typed, err := typedCommand(shell, tool, run)
@@ -159,9 +165,9 @@ func cmdAgentCLI(tool string, args []string) {
 	if err != nil || cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	id, err := spawnHold(holdSpec{Shell: shell, Dir: cwd, Kind: tool, Session: randHex(8), Run: run,
+	id, err := holder.Spawn(holder.Spec{Shell: shell, Dir: cwd, Kind: tool, Session: config.RandHex(8), Run: run,
 		Typed: typed + "; exit", // quitting it here ends the session everywhere
-		Cols:  uint16(cols), Rows: uint16(rows)})
+		Cols:  uint16(cols), Rows: uint16(rows)}, logPath())
 	if err != nil {
 		die("%v", err)
 	}
@@ -193,10 +199,10 @@ func realPath(p string) string {
 func resumeTarget(cwd string, args []string) string {
 	for i, a := range args {
 		switch {
-		case (a == "--resume" || a == "-r") && i+1 < len(args) && reSessionID.MatchString(args[i+1]):
+		case (a == "--resume" || a == "-r") && i+1 < len(args) && usage.ReSessionID.MatchString(args[i+1]):
 			return args[i+1]
 		case strings.HasPrefix(a, "--resume="):
-			if v := strings.TrimPrefix(a, "--resume="); reSessionID.MatchString(v) {
+			if v := strings.TrimPrefix(a, "--resume="); usage.ReSessionID.MatchString(v) {
 				return v
 			}
 		case a == "--continue" || a == "-c":
@@ -207,7 +213,7 @@ func resumeTarget(cwd string, args []string) string {
 }
 
 func newestConversation(dir string) string {
-	files, _ := filepath.Glob(filepath.Join(claudeProjectDir(dir), "*.jsonl"))
+	files, _ := filepath.Glob(filepath.Join(transcript.ClaudeProjectDir(dir), "*.jsonl"))
 	var best string
 	var at time.Time
 	for _, f := range files {
@@ -221,10 +227,10 @@ func newestConversation(dir string) string {
 // holderOf is the shared terminal process pid runs in (0: none).
 func holderOf(pid int) uint32 {
 	shells := map[int]uint32{}
-	for _, i := range holdList() {
+	for _, i := range holder.List() {
 		shells[i.PID] = i.ID
 	}
-	pp := parents()
+	pp := transcript.Parents()
 	for p, n := pid, 0; p > 1 && n < 20; p, n = pp[p], n+1 {
 		if id, ok := shells[p]; ok {
 			return id
@@ -236,7 +242,7 @@ func holderOf(pid int) uint32 {
 // attachTerm shows terminal id in this window until it ends or Ctrl-] leaves
 // it; the exit status.
 func attachTerm(id uint32) int {
-	c, info, err := dialHold(id)
+	c, info, err := holder.Dial(id)
 	if err != nil {
 		die("terminal %d: %v", id, err)
 	}
@@ -256,11 +262,11 @@ func attachTerm(id uint32) int {
 	send := func(typ byte, p []byte) {
 		mu.Lock()
 		defer mu.Unlock()
-		writeFrame(c, typ, p)
+		holder.WriteFrame(c, typ, p)
 	}
 	size := func(role byte) {
 		if cols, rows, err := term.GetSize(out); err == nil && cols > 0 && rows > 0 {
-			send('r', sizeFrame(uint16(cols), uint16(rows), role))
+			send('r', holder.SizeFrame(uint16(cols), uint16(rows), role))
 		}
 	}
 	os.Stdout.WriteString("\x1b[H\x1b[2J\x1b[3J")
@@ -272,7 +278,7 @@ func attachTerm(id uint32) int {
 		from = max(0, info.End-16<<10) // no size to redraw for: the recent output
 	}
 	size('L')
-	send('a', i64(from))
+	send('a', holder.I64(from))
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
@@ -305,7 +311,7 @@ func attachTerm(id uint32) int {
 	}()
 	code := 0
 	for {
-		typ, p, err := readFrame(c)
+		typ, p, err := holder.ReadFrame(c)
 		if err != nil {
 			restore()
 			select {
@@ -345,11 +351,11 @@ func cmdShellSetup(args []string) {
 	bin := "uniai"
 	if _, err := exec.LookPath("uniai"); err != nil {
 		// Not on PATH: the LaunchAgent's copy, else this one.
-		bin = filepath.Join(supportDir(), "uniai")
+		bin = filepath.Join(config.SupportDir(), "uniai")
 		if _, err := os.Stat(bin); err != nil {
 			bin = must(os.Executable())
 		}
-		bin = shellQuote(bin)
+		bin = shellenv.Quote(bin)
 	}
 	block := fmt.Sprintf("\n%s\nalias claude='%s claude'\nalias copilot='%s copilot'\n", shellSetupMark, bin, bin)
 	home, _ := os.UserHomeDir()

@@ -1,4 +1,4 @@
-package main
+package holder
 
 // A holder is one small process per terminal: it owns the pty and the login
 // shell, keeps the recent output, and serves it on a unix socket. It runs in
@@ -11,12 +11,12 @@ package main
 // Frames: [type byte][len u32][payload]. Integers are big-endian.
 //
 //	holder → client
-//	  'n' info JSON (holdInfo), always the first frame
-//	  'o' [offset i64][bytes]  output, from the offset the client asked for
+//	  'n' info JSON (Info), always the first frame
+//	  'o' [offset I64][bytes]  output, from the offset the client asked for
 //	  's' [cols u16][rows u16] the pty's size changed
 //	  'x' [code i32]           the shell exited; nothing more comes
 //	client → holder
-//	  'a' [from i64]           stream output from there (−1: from the end)
+//	  'a' [from I64]           stream output from there (−1: from the end)
 //	  'i' [bytes]              input
 //	  'r' [cols][rows][role]   the client's size; role 'p' phones (via the agent),
 //	                           'l' a laptop window, 'L' a laptop just attached (redraw)
@@ -47,6 +47,9 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
+	"uniai/internal/config"
+	"uniai/internal/shellenv"
 )
 
 // holdProto is the socket protocol's version, in every 'n' frame. Holders
@@ -56,13 +59,13 @@ const holdProto = 1
 // ringKeep is how much output a terminal keeps for re-attaching clients.
 const ringKeep = 1 << 20
 
-func termsDir() string { return filepath.Join(configDir(), "terms") }
+func TermsDir() string { return filepath.Join(config.Dir(), "terms") }
 
-func sockPath(id uint32) string {
-	return filepath.Join(termsDir(), strconv.FormatUint(uint64(id), 10)+".sock")
+func SockPath(id uint32) string {
+	return filepath.Join(TermsDir(), strconv.FormatUint(uint64(id), 10)+".sock")
 }
 
-type holdInfo struct {
+type Info struct {
 	V       int    `json:"v"`
 	ID      uint32 `json:"id"`
 	Kind    string `json:"kind"`
@@ -79,10 +82,10 @@ type holdInfo struct {
 	Code    int    `json:"code"`
 }
 
-// ring is a terminal's output: an append-only stream addressed by byte
+// Ring is a terminal's output: an append-only stream addressed by byte
 // offset, of which the last ≤2*ringKeep bytes are kept. A client resumes
 // exactly where it left off.
-type ring struct {
+type Ring struct {
 	mu      sync.Mutex
 	buf     []byte // ends at end
 	end     int64  // total bytes ever written
@@ -91,17 +94,17 @@ type ring struct {
 	code    int
 }
 
-func newRing() *ring { return &ring{changed: make(chan struct{})} }
+func NewRing() *Ring { return &Ring{changed: make(chan struct{})} }
 
-func (r *ring) wake() {
+func (r *Ring) wake() {
 	close(r.changed)
 	r.changed = make(chan struct{})
 }
 
 // write puts p at offset off (−1: at the end). Bytes already kept are
 // skipped; an offset past the end drops what is kept (the output between was
-// lost), so the ring mirrors another one from any point.
-func (r *ring) write(off int64, p []byte) {
+// lost), so the Ring mirrors another one from any point.
+func (r *Ring) Write(off int64, p []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if off < 0 {
@@ -131,7 +134,7 @@ func (r *ring) write(off int64, p []byte) {
 // buffer, reading restarts at the oldest kept byte (off > from says output
 // was missed). With nothing to read it returns a channel that closes on the
 // next write, and exited once the shell is gone.
-func (r *ring) read(from int64, max int) (data []byte, off int64, exited bool, wait <-chan struct{}) {
+func (r *Ring) Read(from int64, max int) (data []byte, off int64, exited bool, wait <-chan struct{}) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	start := r.end - int64(len(r.buf))
@@ -146,7 +149,7 @@ func (r *ring) read(from int64, max int) (data []byte, off int64, exited bool, w
 	return data, from, r.exited && n == 0, r.changed
 }
 
-func (r *ring) exit(code int) {
+func (r *Ring) Exit(code int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.exited {
@@ -156,14 +159,14 @@ func (r *ring) exit(code int) {
 	r.wake()
 }
 
-func (r *ring) state() (end int64, exited bool, code int) {
+func (r *Ring) State() (end int64, exited bool, code int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.end, r.exited, r.code
 }
 
-// writeFrame sends one frame in a single write.
-func writeFrame(w io.Writer, typ byte, parts ...[]byte) error {
+// WriteFrame sends one frame in a single write.
+func WriteFrame(w io.Writer, typ byte, parts ...[]byte) error {
 	n := 0
 	for _, p := range parts {
 		n += len(p)
@@ -180,7 +183,7 @@ func writeFrame(w io.Writer, typ byte, parts ...[]byte) error {
 
 const frameMax = 1 << 20
 
-func readFrame(r io.Reader) (byte, []byte, error) {
+func ReadFrame(r io.Reader) (byte, []byte, error) {
 	var h [5]byte
 	if _, err := io.ReadFull(r, h[:]); err != nil {
 		return 0, nil, err
@@ -196,9 +199,9 @@ func readFrame(r io.Reader) (byte, []byte, error) {
 	return h[0], p, nil
 }
 
-func i64(v int64) []byte { return binary.BigEndian.AppendUint64(nil, uint64(v)) }
+func I64(v int64) []byte { return binary.BigEndian.AppendUint64(nil, uint64(v)) }
 
-func sizeFrame(cols, rows uint16, role byte) []byte {
+func SizeFrame(cols, rows uint16, role byte) []byte {
 	b := binary.BigEndian.AppendUint16(nil, cols)
 	b = binary.BigEndian.AppendUint16(b, rows)
 	if role != 0 {
@@ -221,13 +224,13 @@ func (cl *holdClient) send(typ byte, parts ...[]byte) error {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	cl.c.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	return writeFrame(cl.c, typ, parts...)
+	return WriteFrame(cl.c, typ, parts...)
 }
 
 type holder struct {
 	mu      sync.Mutex
-	info    holdInfo
-	out     *ring
+	info    Info
+	out     *Ring
 	pty     *os.File
 	inMu    sync.Mutex
 	inQ     [][]byte // input waiting for the pty, in order
@@ -237,9 +240,9 @@ type holder struct {
 	seq     int
 }
 
-// cmdHold runs a holder: `uniai hold -id N -dir D -shell S …`. The agent
+// Run runs a holder: `uniai hold -id N -dir D -shell S …`. The agent
 // and `uniai claude` start it; nobody types this.
-func cmdHold(args []string) {
+func Run(args []string) {
 	fs := flag.NewFlagSet("hold", flag.ExitOnError)
 	id := fs.Uint64("id", 0, "terminal id")
 	dir := fs.String("dir", "", "working folder")
@@ -261,10 +264,10 @@ func cmdHold(args []string) {
 	// the shell and everything it runs would ignore SIGHUP (hangup) and
 	// SIGPIPE (`yes | head`).
 	signal.Notify(make(chan os.Signal, 1), syscall.SIGHUP, syscall.SIGPIPE)
-	if err := os.MkdirAll(termsDir(), 0o700); err != nil {
+	if err := os.MkdirAll(TermsDir(), 0o700); err != nil {
 		die("%v", err)
 	}
-	path := sockPath(uint32(*id))
+	path := SockPath(uint32(*id))
 	os.Remove(path) // a stale one; the spawner picked an id nobody serves
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -275,7 +278,7 @@ func cmdHold(args []string) {
 		c, r = 80, 24
 	}
 	cmd := exec.Command(*shell, "-l")
-	cmd.Env = append(shellEnv(), "SHELL="+*shell, "UNIAI_TERM="+strconv.FormatUint(*id, 10))
+	cmd.Env = append(shellenv.Env(), "SHELL="+*shell, "UNIAI_TERM="+strconv.FormatUint(*id, 10))
 	cmd.Dir = *dir
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: c, Rows: r})
 	if err != nil {
@@ -288,11 +291,11 @@ func cmdHold(args []string) {
 		title = strings.Fields(*run)[0]
 	}
 	h := &holder{
-		info: holdInfo{V: holdProto, ID: uint32(*id), Kind: *kind, Session: *session, Dir: *dir, Title: title, Run: *run,
+		info: Info{V: holdProto, ID: uint32(*id), Kind: *kind, Session: *session, Dir: *dir, Title: title, Run: *run,
 			Created: time.Now().UnixMilli(), PID: cmd.Process.Pid, Cols: c, Rows: r},
-		out: newRing(), pty: f, clients: map[*holdClient]struct{}{}, phone: [2]uint16{c, r},
+		out: NewRing(), pty: f, clients: map[*holdClient]struct{}{}, phone: [2]uint16{c, r},
 	}
-	logf("hold %d: %s in %s (pid %d)", *id, title, *dir, cmd.Process.Pid)
+	logf("%d: %s in %s (pid %d)", *id, title, *dir, cmd.Process.Pid)
 	// A TERM (logout, kill) ends the shell the way a hangup does, so the
 	// socket goes and the clients hear 'x'.
 	term := make(chan os.Signal, 1)
@@ -317,7 +320,7 @@ func cmdHold(args []string) {
 	for {
 		n, err := f.Read(b)
 		if n > 0 {
-			h.out.write(-1, b[:n])
+			h.out.Write(-1, b[:n])
 		}
 		if err != nil {
 			break
@@ -328,8 +331,8 @@ func cmdHold(args []string) {
 	// No new clients; the ones attached read what is left, then 'x'.
 	ln.Close()
 	os.Remove(path)
-	h.out.exit(code)
-	logf("hold %d: exited (%d)", *id, code)
+	h.out.Exit(code)
+	logf("%d: exited (%d)", *id, code)
 	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
 		h.mu.Lock()
 		n := len(h.clients)
@@ -341,11 +344,11 @@ func cmdHold(args []string) {
 	f.Close()
 }
 
-func (h *holder) snapshot() holdInfo {
+func (h *holder) snapshot() Info {
 	h.mu.Lock()
 	i := h.info
 	h.mu.Unlock()
-	i.End, i.Exited, i.Code = h.out.state()
+	i.End, i.Exited, i.Code = h.out.State()
 	return i
 }
 
@@ -399,7 +402,7 @@ func (h *holder) serve(c net.Conn) {
 		return
 	}
 	for {
-		typ, p, err := readFrame(c)
+		typ, p, err := ReadFrame(c)
 		if err != nil {
 			return
 		}
@@ -410,7 +413,7 @@ func (h *holder) serve(c net.Conn) {
 			}
 			from := int64(binary.BigEndian.Uint64(p))
 			if from < 0 {
-				from, _, _ = h.out.state()
+				from, _, _ = h.out.State()
 			}
 			stop := make(chan struct{})
 			h.mu.Lock()
@@ -455,9 +458,9 @@ func (h *holder) serve(c net.Conn) {
 // has exited.
 func (h *holder) stream(cl *holdClient, from int64, stop chan struct{}) {
 	for {
-		data, off, exited, wait := h.out.read(from, 32<<10)
+		data, off, exited, wait := h.out.Read(from, 32<<10)
 		if len(data) > 0 {
-			if cl.send('o', i64(off), data) != nil {
+			if cl.send('o', I64(off), data) != nil {
 				cl.c.Close()
 				return
 			}
@@ -465,7 +468,7 @@ func (h *holder) stream(cl *holdClient, from int64, stop chan struct{}) {
 			continue
 		}
 		if exited {
-			_, _, code := h.out.state()
+			_, _, code := h.out.State()
 			cl.send('x', binary.BigEndian.AppendUint32(nil, uint32(int32(code))))
 			return
 		}
@@ -498,7 +501,7 @@ func (h *holder) resize() bool {
 	h.mu.Unlock()
 	pty.Setsize(h.pty, &pty.Winsize{Cols: size[0], Rows: size[1]})
 	for _, cl := range clients {
-		go cl.send('s', sizeFrame(size[0], size[1], 0))
+		go cl.send('s', SizeFrame(size[0], size[1], 0))
 	}
 	return true
 }
@@ -525,26 +528,26 @@ func (h *holder) hangup() {
 	pid := h.info.PID
 	syscall.Kill(-pid, syscall.SIGHUP)
 	time.AfterFunc(3*time.Second, func() {
-		if _, exited, _ := h.out.state(); !exited {
+		if _, exited, _ := h.out.State(); !exited {
 			syscall.Kill(-pid, syscall.SIGKILL)
 		}
 	})
 }
 
-// holdSpec is what a new holder runs.
-type holdSpec struct {
+// Spec is what a new holder runs.
+type Spec struct {
 	Shell, Dir, Kind, Session, Run, Typed string
 	Cols, Rows                            uint16
 }
 
-// spawnHold starts a holder in a session of its own and waits for its
+// Spawn starts a holder in a session of its own and waits for its
 // socket; the new terminal's id.
-func spawnHold(s holdSpec) (uint32, error) {
+func Spawn(s Spec, logPath string) (uint32, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return 0, err
 	}
-	if err := os.MkdirAll(termsDir(), 0o700); err != nil {
+	if err := os.MkdirAll(TermsDir(), 0o700); err != nil {
 		return 0, err
 	}
 	id := freeTermID()
@@ -553,7 +556,7 @@ func spawnHold(s holdSpec) (uint32, error) {
 		"-cols", strconv.Itoa(int(s.Cols)), "-rows", strconv.Itoa(int(s.Rows)))
 	cmd.Dir = s.Dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // out of the agent's (and launchd's) process group
-	if lf, err := os.OpenFile(logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+	if lf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		cmd.Stdout, cmd.Stderr = lf, lf
 		defer lf.Close()
 	}
@@ -563,13 +566,13 @@ func spawnHold(s holdSpec) (uint32, error) {
 	done := make(chan struct{})
 	go func() { cmd.Wait(); close(done) }() // reap it, should it end while we run
 	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		if c, err := net.Dial("unix", sockPath(id)); err == nil {
+		if c, err := net.Dial("unix", SockPath(id)); err == nil {
 			c.Close()
 			return id, nil
 		}
 		select {
 		case <-done:
-			return 0, errors.New("the terminal could not start; see " + logPath())
+			return 0, errors.New("the terminal could not start; see " + logPath)
 		default:
 		}
 	}
@@ -581,21 +584,21 @@ func spawnHold(s holdSpec) (uint32, error) {
 func freeTermID() uint32 {
 	for {
 		id := rand.Uint32N(1<<31-1) + 1
-		if _, err := os.Stat(sockPath(id)); os.IsNotExist(err) {
+		if _, err := os.Stat(SockPath(id)); os.IsNotExist(err) {
 			return id
 		}
 	}
 }
 
-// dialHold connects to terminal id and reads its info.
-func dialHold(id uint32) (net.Conn, holdInfo, error) {
-	var info holdInfo
-	c, err := net.DialTimeout("unix", sockPath(id), time.Second)
+// Dial connects to terminal id and reads its info.
+func Dial(id uint32) (net.Conn, Info, error) {
+	var info Info
+	c, err := net.DialTimeout("unix", SockPath(id), time.Second)
 	if err != nil {
 		return nil, info, err
 	}
 	c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	typ, p, err := readFrame(c)
+	typ, p, err := ReadFrame(c)
 	if err == nil && typ != 'n' {
 		err = fmt.Errorf("terminal %d: unexpected frame %q", id, typ)
 	}
@@ -613,9 +616,9 @@ func dialHold(id uint32) (net.Conn, holdInfo, error) {
 	return c, info, nil
 }
 
-// holdIDs lists the terminal ids that have a socket.
-func holdIDs() []uint32 {
-	files, _ := filepath.Glob(filepath.Join(termsDir(), "*.sock"))
+// IDs lists the terminal ids that have a socket.
+func IDs() []uint32 {
+	files, _ := filepath.Glob(filepath.Join(TermsDir(), "*.sock"))
 	ids := make([]uint32, 0, len(files))
 	for _, f := range files {
 		n, err := strconv.ParseUint(strings.TrimSuffix(filepath.Base(f), ".sock"), 10, 32)
@@ -626,11 +629,11 @@ func holdIDs() []uint32 {
 	return ids
 }
 
-// holdList is every live terminal's info (stale sockets are skipped).
-func holdList() []holdInfo {
-	var out []holdInfo
-	for _, id := range holdIDs() {
-		c, info, err := dialHold(id)
+// List is every live terminal's info (stale sockets are skipped).
+func List() []Info {
+	var out []Info
+	for _, id := range IDs() {
+		c, info, err := Dial(id)
 		if err != nil {
 			continue
 		}

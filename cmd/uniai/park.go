@@ -7,8 +7,9 @@ package main
 import (
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
+
+	"uniai/internal/transcript"
 )
 
 // claudeIn is the Claude running in terminal t: its conversation and pid.
@@ -18,9 +19,9 @@ func claudeIn(t *Term) (sid string, pid int) {
 		return "", 0
 	}
 	var pp map[int]int
-	for id, p := range claudeRunning() {
+	for id, p := range transcript.ClaudeRunning() {
 		if pp == nil {
-			pp = parents()
+			pp = transcript.Parents()
 		}
 		for q, n := pp[p], 0; q > 1 && n < 20; q, n = pp[q], n+1 {
 			if q == shell {
@@ -29,21 +30,6 @@ func claudeIn(t *Term) (sid string, pid int) {
 		}
 	}
 	return "", 0
-}
-
-// quitClaude asks Claude to quit (it saves the conversation first) and waits
-// up to wait for it to go.
-func quitClaude(pid int, wait time.Duration) bool {
-	if syscall.Kill(pid, syscall.SIGTERM) != nil {
-		return syscall.Kill(pid, 0) == syscall.ESRCH
-	}
-	for end := time.Now().Add(wait); time.Now().Before(end); {
-		time.Sleep(100 * time.Millisecond)
-		if syscall.Kill(pid, 0) == syscall.ESRCH {
-			return true
-		}
-	}
-	return false
 }
 
 // resumeCommand is the command the terminal started with (run), resuming
@@ -78,7 +64,7 @@ func (t *Term) park() (string, error) {
 	if pid == 0 {
 		return "", nil
 	}
-	if !quitClaude(pid, 5*time.Second) {
+	if !transcript.QuitClaude(pid, 5*time.Second) {
 		return "", &rpcError{Code: "busy", Msg: "Claude on the Mac did not quit"}
 	}
 	t.mu.Lock()
@@ -98,11 +84,11 @@ func (t *Term) unpark(take bool) error {
 		return nil
 	}
 	if _, pid := claudeIn(t); pid == 0 {
-		if _, open := claudeRunning()[sid]; open {
+		if _, open := transcript.ClaudeRunning()[sid]; open {
 			if !take {
 				return &rpcError{Code: "busy", Msg: "Claude has this conversation open somewhere else on the Mac"}
 			}
-			if err := stopClaude(sid); err != nil {
+			if err := transcript.StopClaude(sid); err != nil {
 				return err
 			}
 		}

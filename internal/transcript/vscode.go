@@ -1,7 +1,7 @@
-package main
+package transcript
 
 // VS Code's Copilot Chat keeps each window's conversations in
-// ~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/
+// ~/Library/Application Support/Code/User/workspaceStorage/<hash>/ChatSessions/
 // (workspace.json next to it names the folder). A <id>.jsonl is a log of
 // edits to one JSON object: {"kind":0,"v":…} is the start, 1 sets the value
 // at path k to v, 2 appends v to the list at k (cut to length i first when i
@@ -23,6 +23,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"uniai/internal/usage"
 )
 
 func vscodeStorage() []string {
@@ -60,7 +62,7 @@ func vscodeFiles() map[string]string {
 	for _, root := range vscodeStorage() {
 		wss, _ := filepath.Glob(filepath.Join(root, "*"))
 		for _, ws := range wss {
-			files, _ := filepath.Glob(filepath.Join(ws, "chatSessions", "*.json*"))
+			files, _ := filepath.Glob(filepath.Join(ws, "ChatSessions", "*.json*"))
 			if len(files) == 0 {
 				continue
 			}
@@ -207,9 +209,9 @@ func vscodeTitleOf(c *Conversation) (title, prompt, model string) {
 	return t.title, t.prompt, t.model
 }
 
-// vscodeConversations lists VS Code's chats newest first, at most n of those
+// VSCodeConversations lists VS Code's chats newest first, at most n of those
 // keep takes (keep sees each one's Dir), like [conversations].
-func vscodeConversations(n int, keep func(*Conversation) bool) []Conversation {
+func VSCodeConversations(n int, keep func(*Conversation) bool) []Conversation {
 	var list []Conversation
 	for f, dir := range vscodeFiles() {
 		st, err := os.Stat(f)
@@ -217,7 +219,7 @@ func vscodeConversations(n int, keep func(*Conversation) bool) []Conversation {
 			continue
 		}
 		id := strings.TrimSuffix(strings.TrimSuffix(filepath.Base(f), ".jsonl"), ".json")
-		if !reSessionID.MatchString(id) {
+		if !usage.ReSessionID.MatchString(id) {
 			continue
 		}
 		list = append(list, Conversation{ID: id, Tool: "vscode", Dir: dir, Mtime: st.ModTime().Unix(), Size: st.Size(), path: f})
@@ -242,7 +244,7 @@ func vscodeConversations(n int, keep func(*Conversation) bool) []Conversation {
 
 // vscodeFind is the chat file with this id and its window's folder.
 func vscodeFind(id string) (path, dir string) {
-	if !reSessionID.MatchString(id) {
+	if !usage.ReSessionID.MatchString(id) {
 		return "", ""
 	}
 	for f, d := range vscodeFiles() {
@@ -253,10 +255,10 @@ func vscodeFind(id string) (path, dir string) {
 	return "", ""
 }
 
-// vscodeTranscript is a chat's items, the last vscodeMax of them, and the
+// VSCodeTranscript is a chat's items, the last vscodeMax of them, and the
 // file's size and time: the phone asks again with them and gets
 // {"same": true} until VS Code writes more.
-func vscodeTranscript(id string, size, mtime int64, keep func(dir string) bool) (map[string]any, error) {
+func VSCodeTranscript(id string, size, mtime int64, keep func(dir string) bool) (map[string]any, error) {
 	path, dir := vscodeFind(id)
 	if path == "" || !keep(dir) {
 		return nil, errors.New("no such VS Code chat in a shared folder")
@@ -281,10 +283,10 @@ func vscodeTranscript(id string, size, mtime int64, keep func(dir string) bool) 
 
 const vscodeMax = 600
 
-// vscodeHandoff writes a chat out as markdown for an agent in a shared
+// VSCodeHandoff writes a chat out as markdown for an agent in a shared
 // terminal to carry on (only VS Code can add to the chat itself), and the
 // prompt that hands it over.
-func vscodeHandoff(id string, keep func(dir string) bool) (map[string]any, error) {
+func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error) {
 	path, dir := vscodeFind(id)
 	if path == "" || !keep(dir) {
 		return nil, errors.New("no such VS Code chat in a shared folder")

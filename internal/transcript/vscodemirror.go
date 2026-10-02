@@ -1,4 +1,4 @@
-package main
+package transcript
 
 // Carrying a VS Code chat on, back in VS Code. chat.handoff's prompt names
 // <id>.md, so a shared terminal whose command holds that path carries on
@@ -33,6 +33,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+
+	"uniai/internal/ulog"
+	"uniai/internal/usage"
 )
 
 func vscodeCache() string {
@@ -61,21 +64,22 @@ type vscodeMirror struct {
 	failed     string // the last error, logged once
 }
 
-// mirrorVSCode runs for the agent's life: every few seconds it lists the
-// terminals carrying a VS Code chat on and mirrors their turns.
-func (m *Terms) mirrorVSCode() {
+// MirrorVSCode runs for the agent's life: every few seconds it lists the
+// terminals (all) carrying a VS Code chat on and mirrors their turns.
+func MirrorVSCode(all func() []*Terminal) {
 	exe, _ := os.Executable()
 	mirrors := map[uint32]*vscodeMirror{}
+	logf := ulog.For("vscode")
 	var last []byte
 	for range time.Tick(3 * time.Second) {
 		links := []vscodeLink{}
 		live := map[uint32]bool{}
-		for _, t := range m.all() {
-			mm := reHandoff.FindStringSubmatch(t.run)
+		for _, t := range all() {
+			mm := reHandoff.FindStringSubmatch(t.Run)
 			if mm == nil || (t.Kind != "claude" && t.Kind != "copilot") {
 				continue
 			}
-			links = append(links, vscodeLink{Chat: mm[1], Term: t.ID, Dir: t.Dir, Kind: t.Kind, Title: t.info().Title})
+			links = append(links, vscodeLink{Chat: mm[1], Term: t.ID, Dir: t.Dir, Kind: t.Kind, Title: t.Title()})
 			live[t.ID] = true
 			mr := mirrors[t.ID]
 			if mr == nil {
@@ -83,7 +87,7 @@ func (m *Terms) mirrorVSCode() {
 				mirrors[t.ID] = mr
 			}
 			if err := mr.step(t, mm[1]); err != nil && err.Error() != mr.failed {
-				logf("vscode mirror %s: %v", mm[1], err)
+				logf("mirror %s: %v", mm[1], err)
 				mr.failed = err.Error()
 			}
 		}
@@ -112,7 +116,7 @@ func writeFileAtomic(path string, b []byte) error {
 
 // step reads what the terminal's agent added to its transcript and, when the
 // turns changed, writes them to the chat.
-func (mr *vscodeMirror) step(t *Term, chat string) error {
+func (mr *vscodeMirror) step(t *Terminal, chat string) error {
 	if mr.transcript == "" {
 		path, _, parse := chatSource(t)
 		if path == "" {
@@ -254,7 +258,7 @@ func vscodeBusy(path, chat string) bool {
 	if _, err := os.Stat(db); err != nil {
 		return true // no way to tell whether the chat is open: leave it alone
 	}
-	if !reSessionID.MatchString(chat) { // it goes into the query
+	if !usage.ReSessionID.MatchString(chat) { // it goes into the query
 		return true
 	}
 	like := []string{chat, base64.StdEncoding.EncodeToString([]byte(chat)), base64.RawURLEncoding.EncodeToString([]byte(chat))}
@@ -461,9 +465,9 @@ func vscodeCLIs() []string {
 	return out
 }
 
-// vscodeExtInstall puts this agent's bz-uniai extension into each VS Code that
+// VSCodeExtInstall puts this agent's bz-uniai extension into each VS Code that
 // lacks this version of it (all of them with force), and says what it did.
-func vscodeExtInstall(force bool) (string, error) {
+func VSCodeExtInstall(force bool) (string, error) {
 	vsix, full, err := vscodeExtVSIX()
 	if err != nil {
 		return "", err
@@ -495,13 +499,4 @@ func vscodeExtInstall(force bool) (string, error) {
 		return full + " is already installed", nil
 	}
 	return "installed " + full + " into " + strings.Join(did, ", "), nil
-}
-
-// cmdVSCode installs the extension: `uniai vscode`.
-func cmdVSCode(args []string) {
-	msg, err := vscodeExtInstall(len(args) > 0 && args[0] == "-force")
-	if err != nil {
-		die("%v", err)
-	}
-	fmt.Println(msg)
 }

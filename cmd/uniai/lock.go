@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"uniai/internal/config"
 )
 
 // Homebrew renamed its service labels from homebrew.mxcl.* to sh.brew.*.
@@ -18,8 +20,8 @@ var brewLabels = []string{"sh.brew.uniai", "homebrew.mxcl.uniai"}
 // A second copy waits here, quietly, and takes over if the first one stops.
 // The lock lives as long as the process (the file stays open).
 func holdAgentLock() {
-	os.MkdirAll(configDir(), 0o700)
-	path := filepath.Join(configDir(), "agent.lock")
+	os.MkdirAll(config.Dir(), 0o700)
+	path := filepath.Join(config.Dir(), "agent.lock")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		logf("lock: %v (running without one)", err)

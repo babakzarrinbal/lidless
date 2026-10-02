@@ -1,4 +1,4 @@
-package main
+package usage
 
 // Plan limits, asked of the CLIs that are already signed in on this Mac:
 // Claude Code answers a `get_usage` control request (the numbers its /usage
@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"uniai/internal/shellenv"
 )
 
 // findTool finds a CLI the way a login shell would, without starting one:
@@ -72,7 +74,7 @@ func askClaudeLimits() map[string]any {
 	cmd := exec.CommandContext(ctx, bin, "-p", "--setting-sources", "", "--no-session-persistence",
 		"--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
 	cmd.Dir = os.TempDir()
-	cmd.Env = shellEnv()
+	cmd.Env = shellenv.Env()
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil
@@ -176,7 +178,7 @@ func askCopilotQuota() map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "api", "/copilot_internal/user")
-	cmd.Env = shellEnv()
+	cmd.Env = shellenv.Env()
 	b, err := cmd.Output()
 	if err != nil {
 		return nil

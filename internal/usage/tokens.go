@@ -1,4 +1,4 @@
-package main
+package usage
 
 // Tokens used, per account and per conversation, for Claude Code and Copilot
 // CLI, read from their own session files: nothing is asked of any server.
@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"uniai/internal/config"
 )
 
 type tokenSum struct {
@@ -84,7 +86,7 @@ type ledger struct {
 	dir      string    // where the ledger lives
 }
 
-var tokenLedger = newLedger("", "", "")
+var TokenLedger = newLedger("", "", "")
 
 func newLedger(claude, copilot, dir string) *ledger {
 	home, _ := os.UserHomeDir()
@@ -95,7 +97,7 @@ func newLedger(claude, copilot, dir string) *ledger {
 		copilot = filepath.Join(home, ".copilot")
 	}
 	if dir == "" {
-		dir = supportDir()
+		dir = config.SupportDir()
 	}
 	return &ledger{claude: claude, copilot: copilot, dir: dir}
 }
@@ -462,7 +464,7 @@ func copilotAccount(dir string) string {
 }
 
 // tokenTotals is every account's totals, the signed-in ones first.
-func (l *ledger) tokenTotals() []map[string]any {
+func (l *ledger) TokenTotals() []map[string]any {
 	l.refresh(10 * time.Second)
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -493,7 +495,7 @@ func (l *ledger) tokenTotals() []map[string]any {
 	return out
 }
 
-func (l *ledger) reset(tool, account string) bool {
+func (l *ledger) Reset(tool, account string) bool {
 	l.refresh(0)
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -508,7 +510,7 @@ func (l *ledger) reset(tool, account string) bool {
 
 // chatTokens is what one Claude conversation used: its transcript and its
 // subagents'.
-func (l *ledger) chatTokens(transcript string) map[string]any {
+func (l *ledger) ChatTokens(transcript string) map[string]any {
 	l.refresh(5 * time.Second)
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -536,12 +538,12 @@ func (l *ledger) chatTokens(transcript string) map[string]any {
 	return map[string]any{"total": sum.Total(), "used": sum, "accounts": accts}
 }
 
-// keepCounting reads new tokens every minute, so a transcript Claude deletes
+// KeepCounting reads new tokens every minute, so a transcript Claude deletes
 // later is counted before it goes.
-func keepCounting() {
+func KeepCounting() {
 	go func() {
 		for {
-			tokenLedger.refresh(0)
+			TokenLedger.refresh(0)
 			time.Sleep(time.Minute)
 		}
 	}()

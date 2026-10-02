@@ -1,4 +1,8 @@
-package main
+// Package config owns the agent's identity and settings on disk:
+// ~/.config/uniai/agent.json (keys, room, relay, paired devices, shared
+// folders), the one-time pairing file, and the directory other files live in.
+// Pairing and the protocol: docs/architecture.md.
+package config
 
 import (
 	"crypto/rand"
@@ -38,35 +42,42 @@ type Pairing struct {
 	Expires time.Time `json:"expires"`
 }
 
-func configDir() string {
+func Dir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "uniai")
 }
 
-func configPath() string  { return filepath.Join(configDir(), "agent.json") }
-func pairingPath() string { return filepath.Join(configDir(), "pairing.json") }
+// SupportDir is where the agent binary and Claude's status files live.
+func SupportDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Library", "Application Support", "Uniai")
+}
 
-var errNotSetUp = errors.New("not set up: run `uniai setup host:port` (your relay)")
+func Path() string        { return filepath.Join(Dir(), "agent.json") }
+func PairingPath() string { return filepath.Join(Dir(), "pairing.json") }
 
-// ensureConfig loads the config, or makes one for this Mac alone: keys and a
+var ErrNotSetUp = errors.New("not set up: run `uniai setup host:port` (your relay)")
+
+// Ensure loads the config, or makes one for this Mac alone: keys and a
 // room, no relay until `uniai setup`, and no keep-awake.
-func ensureConfig() (*Config, error) {
-	c, err := loadConfig()
-	if err != errNotSetUp {
+func Ensure() (*Config, error) {
+	c, err := Load()
+	if err != ErrNotSetUp {
 		return c, err
 	}
-	if c, err = newConfig("", ""); err != nil {
+	if c, err = New("", ""); err != nil {
 		return nil, err
 	}
 	c.KeepAwake = false
-	return c, c.save()
+	return c, c.Save()
 }
 
-func loadConfig() (*Config, error) {
-	b, err := os.ReadFile(configPath())
+// Load reads the config; ErrNotSetUp when there is none.
+func Load() (*Config, error) {
+	b, err := os.ReadFile(Path())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errNotSetUp
+			return nil, ErrNotSetUp
 		}
 		return nil, err
 	}
@@ -77,8 +88,8 @@ func loadConfig() (*Config, error) {
 	return &c, nil
 }
 
-// writeJSON0600 writes v atomically, readable by the owner only.
-func writeJSON0600(path string, v any) error {
+// WriteJSON0600 writes v atomically, readable by the owner only.
+func WriteJSON0600(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -93,9 +104,9 @@ func writeJSON0600(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
-func (c *Config) save() error { return writeJSON0600(configPath(), c) }
+func (c *Config) Save() error { return WriteJSON0600(Path(), c) }
 
-func (c *Config) key() (noise.DHKey, error) {
+func (c *Config) Key() (noise.DHKey, error) {
 	priv, err1 := hex.DecodeString(c.Priv)
 	pub, err2 := hex.DecodeString(c.Pub)
 	if err1 != nil || err2 != nil || len(priv) != 32 || len(pub) != 32 {
@@ -104,7 +115,7 @@ func (c *Config) key() (noise.DHKey, error) {
 	return noise.DHKey{Private: priv, Public: pub}, nil
 }
 
-func (c *Config) device(pub string) *Device {
+func (c *Config) FindDevice(pub string) *Device {
 	for i := range c.Devices {
 		if c.Devices[i].Pub == pub {
 			return &c.Devices[i]
@@ -113,7 +124,7 @@ func (c *Config) device(pub string) *Device {
 	return nil
 }
 
-func randHex(n int) string {
+func RandHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
@@ -121,7 +132,7 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func newConfig(relay, pin string) (*Config, error) {
+func New(relay, pin string) (*Config, error) {
 	k, err := noise.DH25519.GenerateKeypair(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -130,8 +141,8 @@ func newConfig(relay, pin string) (*Config, error) {
 	return &Config{
 		Relay:     relay,
 		Pin:       pin,
-		Room:      randHex(32),
-		RoomKey:   randHex(32),
+		Room:      RandHex(32),
+		RoomKey:   RandHex(32),
 		Priv:      hex.EncodeToString(k.Private),
 		Pub:       hex.EncodeToString(k.Public),
 		Roots:     []string{home},
