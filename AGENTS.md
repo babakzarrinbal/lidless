@@ -6,6 +6,33 @@ protocols, the traps), docs/dev-setup.md to set up a new Mac, and
 docs/hosting.md for the relay. **docs/native-app.md is where it is going**
 (native app on every platform, plugins, phases): new work follows its layout.
 
+## Rule one: cheap for an AI to change, debug and improve
+
+This is the project's most important property. Weigh every change by it, and
+leave code easier for the next agent than you found it:
+
+- **Find it fast.** One concern per file and one module per folder. Each file
+  opens with a short comment saying what it owns and which doc covers it.
+  Aim for files under ~300 lines. When a file grows past that, split it.
+- **Every module has a map.** Each package or folder has a short README (one
+  screen) with: what it does, its entry points, its tests, and its traps.
+  When files move, update the Layout table below in the same commit.
+- **One command proves it.** Each module can be checked alone through
+  `dev.sh`, and the check prints one PASS/FAIL line. Full output goes to
+  `build/logs/`. If an agent has to type a raw toolchain command, add a
+  subcommand to `dev.sh` instead.
+- **Tests sit beside the code they cover.** A bug fix lands together with a
+  test that fails without it. Prefer fast tests that need no phone, Mac or
+  relay.
+- **Debug from logs, not from devices.** Every log line starts with its
+  module (`term:`, `chat:`, `link:`, …), so a grep isolates one module.
+  Errors say what to do next.
+- **Contracts live in one place.** The wire format, RPC methods and events
+  are written down once (docs/architecture.md and session.go's header), and
+  both sides follow that text.
+- **Plain over clever.** Explicit code, no hidden magic, no deep inheritance,
+  few dependencies. A newcomer reading one file should not need five others.
+
 **This repo is public.** Never commit the relay's address or IP, its
 certificate pin, keys, or tokens. Those live in untracked files (listed below).
 
