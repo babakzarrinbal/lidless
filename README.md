@@ -41,6 +41,18 @@ xattr -dr com.apple.quarantine /Applications/bz-uniai.app
 open /Applications/bz-uniai.app
 ```
 
+From this repo, `./dev.sh mac-install` does all of that over ssh, here and on
+your other Macs, the way `./dev.sh install` reaches a phone. Once, on the other
+Mac (Remote Login on, the repo cloned), let this Mac's key in; it is taken from
+your GitHub account's published keys by its fingerprint (`./dev.sh mac-fp`):
+
+```bash
+./dev.sh mac-allow SHA256:<this Mac's fingerprint>
+```
+
+It prints the `./dev.sh mac-add user@host.local` to run here; from then on
+`./dev.sh mac-install` updates both.
+
 Without the app:
 `brew install babakzarrinbal/uniai/uniai`, then `uniai setup your.server:8460`. To run a relay, see
 [docs/hosting.md](docs/hosting.md).

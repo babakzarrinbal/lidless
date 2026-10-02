@@ -26,6 +26,8 @@
 #   ./dev.sh apk                   release APK
 #   ./dev.sh mac-app | mac-run     the Mac app (Flutter macos target, core inside), build | build + open
 #   ./dev.sh mac-zip               build/bz-uniai-mac.zip: that app for another Mac (all it needs)
+#   ./dev.sh mac-install [here|all|user@host]  build it, install + open it here and on the Macs in .macs (ssh)
+#   ./dev.sh mac-allow <fp> | mac-add <user@host> | mac-fp   once: let this Mac in over ssh (scripts/macs.sh)
 #   ./dev.sh install               release APK → the Samsung (ANDROID_SERIAL overrides)
 #   ./dev.sh run                   install + launch + follow logs
 #   ./dev.sh pair-adb              send a fresh pairing link to the phone over adb
@@ -345,6 +347,12 @@ cmd_mac-zip() {
   ditto -c -k --keepParent "$MAC_APP" build/bz-uniai-mac.zip
   ls -la build/bz-uniai-mac.zip | awk '{print "build/bz-uniai-mac.zip", $5, "bytes"}'
 }
+
+# Other Macs over ssh, like phones over adb: scripts/macs.sh.
+cmd_mac-install() { scripts/macs.sh install "$@"; }
+cmd_mac-allow() { scripts/macs.sh allow "$@"; }
+cmd_mac-add() { scripts/macs.sh add "$@"; }
+cmd_mac-fp() { scripts/macs.sh fp; }
 
 cmd_install() {
   need_phone

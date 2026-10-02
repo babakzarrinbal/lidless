@@ -80,6 +80,7 @@ through brew.
 ./dev.sh apk | install | run    # release APK; install onto the Samsung (ANDROID_SERIAL overrides)
 ./dev.sh mac-app | mac-zip      # the Mac app with its core (and the relay, from .server.env); zip for another Mac
 ./dev.sh log                    # agent log tail (~/Library/Logs/uniai.log)
+./dev.sh mac-install [here|all]  # Mac app zip, installed + opened here and on the Macs in .macs (ssh; scripts/macs.sh)
 ```
 Running `./dev.sh` with no command lists the rest. Output is already a summary; full logs go to `build/logs/`.
 
@@ -105,7 +106,7 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
   service. To switch a brew Mac to the dev build:
   `brew services stop uniai && ./dev.sh agent-install`.
 - **Secrets are never printed, committed or copied:**
-  - `.server.env` (`RELAY_HOST`) and `~/.config/uniai/agent.json` (keys,
+  - `.server.env` (`RELAY_HOST`), `.macs` (other Macs' ssh targets) and `~/.config/uniai/agent.json` (keys,
     room key);
   - `~/.android/debug.keystore`, `~/.config/cloud/cf.env`;
   - the relay's data volume on the box.
