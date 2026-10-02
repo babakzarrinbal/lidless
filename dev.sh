@@ -19,6 +19,7 @@
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
 #   ./dev.sh app-test              flutter test
 #   ./dev.sh app-analyze           flutter analyze
+#   ./dev.sh app-pub <args…>       flutter pub (add <pkg>, get, outdated)
 #   ./dev.sh apk                   release APK
 #   ./dev.sh mac-app | mac-run     the Mac app (Flutter macos target), build | build + open
 #   ./dev.sh install               release APK → the Samsung (ANDROID_SERIAL overrides)
@@ -272,6 +273,7 @@ cmd_site-dns() {
 cmd_vectors() { gorun linux arm64 go run ./cmd/noisevec > app/test/noise_vectors.json && echo "wrote app/test/noise_vectors.json"; }
 
 cmd_app-test() { (cd app && quiet app-test flutter test "$@"); } # [file…]
+cmd_app-pub() { (cd app && flutter pub "$@" 2>&1 | tail -n 15); } # add <pkg> | get | outdated
 cmd_app-analyze() { (cd app && flutter analyze --no-pub 2>&1 | grep -E 'error|warning|info|issues found|No issues' | head -40); }
 
 cmd_apk() {

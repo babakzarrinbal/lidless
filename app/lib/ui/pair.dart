@@ -43,7 +43,7 @@ class PairScreen extends StatelessWidget {
             ? null
             : AppBar(
                 leading: BackButton(onPressed: onBack),
-                title: const Text('Pair another Mac'),
+                title: const Text('Add a device'),
               ),
         body: SafeArea(
           child: Center(
@@ -93,7 +93,8 @@ class PairScreen extends StatelessWidget {
                         child: const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('On your Mac, run', style: TextStyle(color: C.dim)),
+                            Text('In bz-uniai on your Mac, open Devices → Pair a new device. Or run',
+                                style: TextStyle(color: C.dim)),
                             SizedBox(height: 8),
                             SelectableText(
                               'uniai pair',
@@ -101,7 +102,7 @@ class PairScreen extends StatelessWidget {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              'It shows a QR code and a text code, valid for 10 minutes.',
+                              'Either shows a QR code and a text code, valid for 10 minutes.',
                               style: TextStyle(color: C.dim, fontSize: 13),
                             ),
                           ],

@@ -32,6 +32,20 @@ class Conversation {
     final r = await link.call('chat.recent', {'vscode': true});
     return [for (final m in (r as List? ?? const []).cast<Map>()) Conversation.from(m)];
   }
+
+  /// Whether it has a live terminal: open on the Mac, or in one of [open]
+  /// (this app's terminal ids).
+  bool activeIn(Set<int> open) => running || (term != 0 && open.contains(term));
+
+  /// The Recent page's order: the ones with a live terminal first, then the
+  /// rest, each newest first.
+  static (List<Conversation>, List<Conversation>) ordered(List<Conversation> all, Set<int> open) {
+    int newest(Conversation a, Conversation b) => b.mtime.compareTo(a.mtime);
+    return (
+      all.where((c) => c.activeIn(open)).toList()..sort(newest),
+      all.where((c) => !c.activeIn(open)).toList()..sort(newest),
+    );
+  }
 }
 
 class SlashCommand {

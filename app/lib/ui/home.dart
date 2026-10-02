@@ -599,13 +599,18 @@ class _HomeState extends State<Home> {
         child: Column(children: [
           Expanded(
             child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
-              _section('Macs'),
-              for (final m in widget.macs)
+              _section('Devices'),
+              // This device first, its own name underneath.
+              for (final m in [...widget.macs.where((m) => m.isLocal), ...widget.macs.where((m) => !m.isLocal)])
                 ListTile(
                   dense: true,
                   leading: Icon(Icons.laptop_mac_rounded, color: m.room == link.pairing.room ? C.accent : C.dim),
-                  title: Text(m.room == link.pairing.room ? link.host : m.name,
+                  title: Text(m.isLocal ? 'This device' : m.room == link.pairing.room ? link.host : m.name,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  subtitle: m.isLocal
+                      ? Text(m.room == link.pairing.room ? link.hostname : m.host,
+                          style: const TextStyle(fontSize: 12, color: C.dim))
+                      : null,
                   trailing: m.room == link.pairing.room ? const Icon(Icons.check_rounded, color: C.accent) : null,
                   onTap: () {
                     _scaffold.currentState?.closeDrawer();
@@ -615,7 +620,7 @@ class _HomeState extends State<Home> {
               ListTile(
                 dense: true,
                 leading: const Icon(Icons.tune_rounded, color: C.dim),
-                title: const Text('Manage Macs'),
+                title: const Text('Manage devices'),
                 subtitle: const Text('Pair, rename, remove, shell', style: TextStyle(fontSize: 12)),
                 onTap: () {
                   _scaffold.currentState?.closeDrawer();
@@ -775,6 +780,7 @@ class _HomeState extends State<Home> {
           onAdd: widget.onAddMac,
           onRename: widget.onRename,
           onForget: widget.onForget,
+          localCore: MacPairing.hasLocal ? () => Link(MacPairing.local(), null)..start() : null,
         ),
       ),
     );

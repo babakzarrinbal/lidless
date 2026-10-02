@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../model/terms.dart';
 import '../net/link.dart';
 import '../net/store.dart';
+import 'devices.dart';
 import 'shells.dart';
 import 'theme.dart';
 
-/// Every paired Mac: switch, rename, remove, pair another, and the default
-/// shell of the one connected.
+/// The Devices page: this device on top (on a Mac, with the devices paired
+/// with it), then every other Mac this app reaches: switch, rename, remove,
+/// add one, and the default shell of the one connected.
 class MacsPage extends StatefulWidget {
   const MacsPage({
     super.key,
@@ -18,6 +20,7 @@ class MacsPage extends StatefulWidget {
     required this.onAdd,
     required this.onRename,
     required this.onForget,
+    this.localCore,
   });
   final Link link;
   final Terms terms;
@@ -27,6 +30,10 @@ class MacsPage extends StatefulWidget {
   final Future<void> Function(MacPairing, String?) onRename;
   final Future<void> Function(MacPairing) onForget;
 
+  /// Opens a link to this Mac's own core when the one on screen is another
+  /// Mac's (null: not a Mac, or a test).
+  final Link Function()? localCore;
+
   @override
   State<MacsPage> createState() => _MacsPageState();
 }
@@ -35,6 +42,7 @@ class _MacsPageState extends State<MacsPage> {
   late List<MacPairing> _macs = [
     for (final m in widget.macs) m.room == link.pairing.room ? link.pairing : m,
   ];
+  Link? _local, _ownLocal; // this Mac's core; _ownLocal if this page opened it
   ShellInfo? _shells;
   bool _shellsOld = false, _shellsBusy = true;
 
@@ -44,7 +52,14 @@ class _MacsPageState extends State<MacsPage> {
   @override
   void initState() {
     super.initState();
+    _local = link.pairing.isLocal ? link : (_ownLocal = widget.localCore?.call());
     _loadShells();
+  }
+
+  @override
+  void dispose() {
+    _ownLocal?.dispose();
+    super.dispose();
   }
 
   Future<void> _loadShells() async {
@@ -114,14 +129,18 @@ class _MacsPageState extends State<MacsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Macs')),
+      appBar: AppBar(title: const Text('Devices')),
       body: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
-        for (final m in _macs) ..._tile(m),
+        for (final m in _macs.where((m) => m.isLocal)) ..._tile(m),
+        if (!_macs.any((m) => m.isLocal)) _phoneTile(),
+        if (_local != null) PairedDevicesSection(link: _local!),
         const Divider(height: 24),
+        if (_macs.any((m) => !m.isLocal)) _header('Other devices'),
+        for (final m in _macs.where((m) => !m.isLocal)) ..._tile(m),
         ListTile(
           leading: const Icon(Icons.add_link_rounded, color: C.accent),
-          title: const Text('Pair another Mac'),
-          subtitle: const Text('Run `uniai pair` on it and scan the code'),
+          title: const Text('Add a device'),
+          subtitle: const Text('Scan or paste its pairing code'),
           onTap: () {
             Navigator.pop(context);
             widget.onAdd();
@@ -131,25 +150,40 @@ class _MacsPageState extends State<MacsPage> {
     );
   }
 
+  Widget _header(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+        child: Text(t.toUpperCase(),
+            style: const TextStyle(color: C.dim, fontSize: 11.5, letterSpacing: .8, fontWeight: FontWeight.w600)),
+      );
+
+  /// A phone has no core of its own yet: just its name, as its Macs know it.
+  Widget _phoneTile() => ListTile(
+        leading: const Icon(Icons.smartphone_rounded, color: C.accent),
+        title: const Text('This device', style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(link.deviceName, style: const TextStyle(fontSize: 12, color: C.dim)),
+      );
+
   List<Widget> _tile(MacPairing m) {
     final cur = _current(m);
     final real = cur ? link.hostname : m.host;
     return [
       ListTile(
         leading: Icon(Icons.laptop_mac_rounded, color: cur ? C.accent : C.dim),
-        title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text([
-          if (m.isLocal) 'this Mac',
-          if (m.nick != null) real,
-          if (cur) link.online ? 'connected' : 'this one, offline',
-        ].join(' · ')),
+        title: Text(m.isLocal ? 'This device' : m.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+            [
+              if (m.isLocal) real,
+              if (!m.isLocal && m.nick != null) real,
+              if (cur) link.online ? 'connected' : 'this one, offline',
+            ].join(' · '),
+            style: m.isLocal ? const TextStyle(fontSize: 12, color: C.dim) : null),
         onTap: cur
             ? null
             : () {
                 Navigator.pop(context);
                 widget.onSwitch(m);
               },
-        trailing: PopupMenuButton<String>(
+        trailing: m.isLocal && cur ? null : PopupMenuButton<String>(
           onSelected: (v) => switch (v) {
             'open' => () {
                 Navigator.pop(context);

@@ -298,4 +298,18 @@ void main() {
     expect(find.text('Fix the relay'), findsNothing);
     expect(prefs.getStringList('foldersShut:m'), ['/Users/x/proj']);
   });
+
+  test('recent order: live terminals first, then the rest, each newest first', () {
+    Conversation c(String id, int mtime, {bool running = false, int term = 0}) =>
+        Conversation.from({'id': id, 'mtime': mtime, 'running': running, 'term': term});
+    final (active, rest) = Conversation.ordered([
+      c('old', 10),
+      c('mac', 20, running: true),
+      c('new', 40),
+      c('phone', 30, term: 7),
+      c('closedTerm', 50, term: 9),
+    ], {7});
+    expect(active.map((x) => x.id), ['phone', 'mac']);
+    expect(rest.map((x) => x.id), ['closedTerm', 'new', 'old']);
+  });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uniai/model/terms.dart';
 import 'package:uniai/net/store.dart';
+import 'package:uniai/ui/devices.dart';
 import 'package:uniai/ui/macs.dart';
 import 'package:uniai/ui/terminal_panel.dart';
 
@@ -84,5 +85,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(forgotten, [other.room]);
     expect(find.text('Studio'), findsNothing);
+  });
+
+  testWidgets('Devices page: this device on top, its paired phones, a pairing code', (tester) async {
+    final link = FakeLink({
+      'term.list': [],
+      'shell.list': {'shells': ['/bin/zsh'], 'default': '', 'login': '/bin/zsh'},
+      'devices.list': [
+        {'name': 'Pixel', 'pub': 'aa', 'added': '2026-10-01T10:00:00.123456789+02:00', 'online': true},
+      ],
+      'devices.rename': [
+        {'name': 'Work phone', 'pub': 'aa', 'added': '2026-10-01T10:00:00Z', 'online': true},
+      ],
+      'devices.pair': {
+        'code': 'mr1.abc',
+        'host': 'Mac',
+        'expires': DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+      },
+    })..pairing = MacPairing.local();
+    const other = MacPairing(relay: 'r:1', pin: 'p', room: 'ffffffffffffffffffff', macPub: 'k', host: 'mini.local');
+    await tester.pumpWidget(MaterialApp(
+      home: MacsPage(
+        link: link,
+        terms: Terms(link),
+        macs: [other, link.pairing],
+        onSwitch: (_) {},
+        onAdd: () {},
+        onRename: (m, n) async {},
+        onForget: (m) async {},
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // This device first, its name underneath; the other Mac after.
+    expect(tester.getTopLeft(find.text('This device')).dy, lessThan(tester.getTopLeft(find.text('mini.local')).dy));
+    expect(find.textContaining('connected now'), findsOneWidget);
+
+    await tester.tap(find.byType(PopupMenuButton<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Work phone');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(link.sent.last.$1, 'devices.rename');
+    expect(link.sent.last.$2, {'pub': 'aa', 'name': 'Work phone'});
+    expect(find.text('Work phone'), findsOneWidget);
+
+    await tester.tap(find.text('Pair a new device'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(PairCodeDialog), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Devices page: an older core says to update', (tester) async {
+    final link = FakeLink({'term.list': []})..pairing = MacPairing.local();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PairedDevicesSection(link: link))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Update the core'), findsOneWidget);
+    expect(find.text('Pair a new device'), findsNothing);
   });
 }

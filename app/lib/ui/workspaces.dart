@@ -374,9 +374,11 @@ class _RecentListState extends State<RecentList> {
         ]),
       );
     }
+    // Live terminals first; the rest newest first, older than today folded.
+    final (active, rest) = Conversation.ordered(list, openTerms(widget.sessions));
     final midnight = DateUtils.dateOnly(DateTime.now());
-    final today = list.where((c) => !c.mtime.isBefore(midnight)).toList();
-    final old = list.where((c) => c.mtime.isBefore(midnight)).toList();
+    final today = rest.where((c) => !c.mtime.isBefore(midnight)).toList();
+    final old = rest.where((c) => c.mtime.isBefore(midnight)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         const Expanded(child: Text('Recent sessions', style: TextStyle(color: C.dim, fontSize: 13))),
@@ -393,6 +395,8 @@ class _RecentListState extends State<RecentList> {
         Text('Couldn\'t load them: $_error', style: const TextStyle(color: C.red))
       else if (list.isEmpty)
         const Text('No conversations in the shared folders yet.', style: TextStyle(color: C.dim)),
+      for (final c in active) _tile(c),
+      if (active.isNotEmpty && today.isNotEmpty) const Divider(height: 12),
       for (final c in today) _tile(c),
       if (old.isNotEmpty) ...[
         InkWell(
