@@ -1,4 +1,4 @@
-package main
+package transcript
 
 import (
 	"os"
@@ -11,7 +11,7 @@ func TestVSCodeChat(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ws := filepath.Join(home, "Library", "Application Support", "Code", "User", "workspaceStorage", "abc")
-	os.MkdirAll(filepath.Join(ws, "chatSessions"), 0o755)
+	os.MkdirAll(filepath.Join(ws, "ChatSessions"), 0o755)
 	os.WriteFile(filepath.Join(ws, "workspace.json"), []byte(`{"folder":"file:///w/my%20app"}`), 0o644)
 	log := `{"kind":0,"v":{"version":3,"requests":[],"customTitle":null}}
 {"kind":2,"k":["requests"],"v":[{"message":{"text":"fix the build"},"response":[]}]}
@@ -24,16 +24,16 @@ func TestVSCodeChat(t *testing.T) {
 {"kind":1,"k":["requests",1,"result"],"v":{"errorDetails":{"message":"network error"}}}
 `
 	id := "0fb1b9c7-9892-48c1-996a-b6de7726603c"
-	os.WriteFile(filepath.Join(ws, "chatSessions", id+".jsonl"), []byte(log), 0o644)
-	os.WriteFile(filepath.Join(ws, "chatSessions", "11111111-0000-0000-0000-000000000000.jsonl"),
+	os.WriteFile(filepath.Join(ws, "ChatSessions", id+".jsonl"), []byte(log), 0o644)
+	os.WriteFile(filepath.Join(ws, "ChatSessions", "11111111-0000-0000-0000-000000000000.jsonl"),
 		[]byte(`{"kind":0,"v":{"requests":[]}}`+"\n"), 0o644) // nothing said: not listed
 
-	l := vscodeConversations(10, func(c *Conversation) bool { return c.Dir == "/w/my app" })
+	l := VSCodeConversations(10, func(c *Conversation) bool { return c.Dir == "/w/my app" })
 	if len(l) != 1 || l[0].ID != id || l[0].Tool != "vscode" || l[0].Title != "Build fix" || l[0].Prompt != "thanks" {
 		t.Fatalf("list: %+v", l)
 	}
 	shared := func(string) bool { return true }
-	r, err := vscodeTranscript(id, 0, 0, shared)
+	r, err := VSCodeTranscript(id, 0, 0, shared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,10 +57,10 @@ func TestVSCodeChat(t *testing.T) {
 			t.Errorf("item %d: %+v, want %+v", i, items[i], want[i])
 		}
 	}
-	if again, _ := vscodeTranscript(id, r["size"].(int64), r["mtime"].(int64), shared); again["same"] != true {
+	if again, _ := VSCodeTranscript(id, r["size"].(int64), r["mtime"].(int64), shared); again["same"] != true {
 		t.Errorf("unchanged file read again: %v", again)
 	}
-	h, err := vscodeHandoff(id, shared)
+	h, err := VSCodeHandoff(id, shared)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestVSCodeChat(t *testing.T) {
 	if !strings.Contains(h["prompt"].(string), h["path"].(string)) {
 		t.Errorf("prompt: %v", h["prompt"])
 	}
-	if _, err := vscodeTranscript(id, 0, 0, func(string) bool { return false }); err == nil {
+	if _, err := VSCodeTranscript(id, 0, 0, func(string) bool { return false }); err == nil {
 		t.Error("a chat outside the shared folders was read")
 	}
 }

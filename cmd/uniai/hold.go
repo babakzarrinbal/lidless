@@ -49,6 +49,7 @@ import (
 	"github.com/creack/pty"
 
 	"uniai/internal/config"
+	"uniai/internal/shellenv"
 )
 
 // holdProto is the socket protocol's version, in every 'n' frame. Holders
@@ -277,7 +278,7 @@ func cmdHold(args []string) {
 		c, r = 80, 24
 	}
 	cmd := exec.Command(*shell, "-l")
-	cmd.Env = append(shellEnv(), "SHELL="+*shell, "UNIAI_TERM="+strconv.FormatUint(*id, 10))
+	cmd.Env = append(shellenv.Env(), "SHELL="+*shell, "UNIAI_TERM="+strconv.FormatUint(*id, 10))
 	cmd.Dir = *dir
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: c, Rows: r})
 	if err != nil {

@@ -26,6 +26,8 @@ import (
 	"uniai/internal/config"
 	"uniai/internal/fsops"
 	"uniai/internal/plugin"
+	"uniai/internal/transcript"
+	"uniai/internal/usage"
 )
 
 // Wire format, inside Noise transport messages:
@@ -664,7 +666,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		go func() {
 			// Claude first, so it saves the conversation for whoever picks it up.
 			if pid != 0 {
-				quitClaude(pid, 3*time.Second)
+				transcript.QuitClaude(pid, 3*time.Second)
 			}
 			t.hangup()
 		}()
@@ -693,21 +695,21 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return chatRead(t, p.From, p.Path)
+		return transcript.ChatRead(t.forChat(), p.From, p.Path)
 	case "chat.older":
 		t, err := term()
 		if err != nil {
 			return nil, err
 		}
-		return chatOlder(t, p.Before, p.Path)
+		return transcript.ChatOlder(t.forChat(), p.Before, p.Path)
 	case "chat.sessions":
 		dir, err := fsops.Resolve(roots, p.Dir)
 		if err != nil {
 			return nil, err
 		}
-		l, err := chatSessions(dir, s.a.terms.all())
+		l, err := transcript.ChatSessions(dir, s.a.terms.forChat())
 		if err == nil && p.VSCode {
-			l = mergeConversations(l, vscodeConversations(listMax, func(c *Conversation) bool { return c.Dir == dir }), listMax)
+			l = transcript.MergeConversations(l, transcript.VSCodeConversations(transcript.ListMax, func(c *transcript.Conversation) bool { return c.Dir == dir }), transcript.ListMax)
 		}
 		return l, err
 	case "chat.recent":
@@ -715,45 +717,45 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		}
-		l := chatRecent(s.a.terms.all(), 40, shared)
+		l := transcript.ChatRecent(s.a.terms.forChat(), 40, shared)
 		if p.VSCode {
-			l = mergeConversations(l, vscodeConversations(40, func(c *Conversation) bool { return shared(c.Dir) }), 40)
+			l = transcript.MergeConversations(l, transcript.VSCodeConversations(40, func(c *transcript.Conversation) bool { return shared(c.Dir) }), 40)
 		}
 		return l, nil
 	case "chat.transcript": // a VS Code chat, read-only: {"same": true} while size and mtime still match
-		return vscodeTranscript(p.Session, p.Size, p.Mtime, func(dir string) bool {
+		return transcript.VSCodeTranscript(p.Session, p.Size, p.Mtime, func(dir string) bool {
 			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		})
 	case "chat.handoff": // a VS Code chat written out for an agent in a shared terminal: {"path", "prompt"}
 		go func() { // so VS Code opens that terminal too (vscodemirror.go)
-			if msg, err := vscodeExtInstall(false); err != nil {
+			if msg, err := transcript.VSCodeExtInstall(false); err != nil {
 				logf("vscode extension: %v", err)
 			} else if strings.HasPrefix(msg, "installed") {
 				logf("vscode extension: %s", msg)
 			}
 		}()
-		return vscodeHandoff(p.Session, func(dir string) bool {
+		return transcript.VSCodeHandoff(p.Session, func(dir string) bool {
 			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		})
 	case "chat.commands":
 		dir, _ := fsops.Resolve(roots, p.Dir) // outside the shared folders: the user's commands only
-		return chatCommands(dir, p.Kind), nil
+		return transcript.ChatCommands(dir, p.Kind), nil
 	case "usage":
-		return claudeUsage(), nil
+		return usage.ClaudeUsage(), nil
 	case "chat.stop":
-		if err := stopClaude(p.Session); err != nil {
+		if err := transcript.StopClaude(p.Session); err != nil {
 			return nil, err
 		}
 		logf("%s quit the Mac's Claude on conversation %s to take it over", s.device, p.Session)
 		return true, nil
 	case "tokens.reset":
-		if !tokenLedger.reset(p.Tool, p.Account) {
+		if !usage.TokenLedger.Reset(p.Tool, p.Account) {
 			return nil, fmt.Errorf("no tokens counted for %s", p.Account)
 		}
 		logf("%s reset the token count of %s %s", s.device, p.Tool, p.Account)
-		return tokenLedger.tokenTotals(), nil
+		return usage.TokenLedger.TokenTotals(), nil
 	case "fs.list":
 		return fsops.List(roots, p.Path)
 	case "fs.read":

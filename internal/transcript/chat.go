@@ -1,4 +1,4 @@
-package main
+package transcript
 
 // Claude Code's own transcript for a terminal (or Copilot's: copilot.go),
 // turned into chat items for the phone. Claude writes ~/.claude/sessions/<pid>.json (its session id) and
@@ -16,6 +16,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"uniai/internal/usage"
 )
 
 const (
@@ -71,10 +73,10 @@ func claudeTranscript(pid int) string {
 	return ""
 }
 
-// chatRead returns the chat items after byte offset from (0: the last part of
+// ChatRead returns the chat items after byte offset from (0: the last part of
 // the transcript) and the offset to ask from next time. had is the transcript
 // the phone read last; when Claude has moved on to another one, it starts over.
-func chatRead(t *Term, from int64, had string) (map[string]any, error) {
+func ChatRead(t *Terminal, from int64, had string) (map[string]any, error) {
 	copilot := t.Kind == "copilot"
 	path, name, parse := chatSource(t)
 	if path == "" {
@@ -127,8 +129,8 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 	}
 	// Claude's status line knows the real window size; the transcript is the
 	// fallback (and is newer when Claude has answered since).
-	if st := readStatus(strings.TrimSuffix(filepath.Base(path), ".jsonl")); st != nil {
-		if used, size := st.ContextWindow.used(); size > 0 {
+	if st := usage.ReadStatus(strings.TrimSuffix(filepath.Base(path), ".jsonl")); st != nil {
+		if used, size := st.ContextWindow.Used(); size > 0 {
 			c := &chatContext{Tokens: used, Size: size, Model: st.Model.DisplayName}
 			if ctx != nil && ctx.Tokens != used {
 				c.Tokens = ctx.Tokens
@@ -145,28 +147,28 @@ func chatRead(t *Term, from int64, had string) (map[string]any, error) {
 		}
 		out["ctx"] = ctx
 	}
-	out["used"] = tokenLedger.chatTokens(path)
+	out["used"] = usage.TokenLedger.ChatTokens(path)
 	return out, nil
 }
 
 // chatSource is the terminal's transcript, the name the phone knows it by, and
 // how to read its lines.
-func chatSource(t *Term) (path, name string, parse func([]byte) []ChatItem) {
+func chatSource(t *Terminal) (path, name string, parse func([]byte) []ChatItem) {
 	if t.Kind == "copilot" {
-		path = copilotTranscript(t.pid)
+		path = copilotTranscript(t.Pid)
 		// Every Copilot conversation is events.jsonl: its folder's name.
 		return path, filepath.Base(filepath.Dir(path)) + ".jsonl", copilotItems
 	}
-	path = claudeTranscript(t.pid)
+	path = claudeTranscript(t.Pid)
 	// The file's name tells the phone when Claude moved to another conversation.
 	return path, filepath.Base(path), chatItems
 }
 
-// chatOlder returns the chat items just before byte offset before (where the
+// ChatOlder returns the chat items just before byte offset before (where the
 // phone's earliest item begins), for scrolling back to the conversation's
 // start, and where they begin (0: the start). had is the transcript the phone
 // shows; another one returns nothing.
-func chatOlder(t *Term, before int64, had string) (map[string]any, error) {
+func ChatOlder(t *Terminal, before int64, had string) (map[string]any, error) {
 	path, name, parse := chatSource(t)
 	if path == "" || name != had {
 		return map[string]any{"path": name, "start": before, "items": []ChatItem{}}, nil

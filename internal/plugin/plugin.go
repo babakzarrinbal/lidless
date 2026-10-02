@@ -107,7 +107,7 @@ func Decode(raw json.RawMessage, v any) error {
 		return nil
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
-		return &Error{"bad", "bad parameters: " + err.Error()}
+		return &Error{Code: "bad", Msg: "bad parameters: " + err.Error()}
 	}
 	return nil
 }

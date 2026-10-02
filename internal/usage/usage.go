@@ -1,4 +1,4 @@
-package main
+package usage
 
 // Context window (and, from older Claude Code versions, plan limits), as
 // Claude Code reports them: it hands its status line command a JSON snapshot
@@ -18,11 +18,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"uniai/internal/config"
 )
 
-var reSessionID = regexp.MustCompile(`^[A-Za-z0-9-]{8,64}$`)
+var ReSessionID = regexp.MustCompile(`^[A-Za-z0-9-]{8,64}$`)
 
-func statusDir() string { return filepath.Join(supportDir(), "claude-status") }
+func statusDir() string { return filepath.Join(config.SupportDir(), "claude-status") }
 
 type ctxWindow struct {
 	TotalInput   int64   `json:"total_input_tokens"`
@@ -47,8 +49,8 @@ type statusSnap struct {
 	Account       string                     `json:"account,omitempty"` // who was signed in
 }
 
-// cmdStatusline is Claude Code's status line command.
-func cmdStatusline(args []string) {
+// CmdStatusline is Claude Code's status line command.
+func CmdStatusline(args []string) {
 	if len(args) > 0 && args[0] == "install" {
 		statuslineInstall()
 		return
@@ -61,7 +63,7 @@ func cmdStatusline(args []string) {
 	s.At = time.Now().Unix()
 	home, _ := os.UserHomeDir()
 	s.Account = claudeAccountEmail(filepath.Join(home, ".claude"))
-	if reSessionID.MatchString(s.SessionID) {
+	if ReSessionID.MatchString(s.SessionID) {
 		os.MkdirAll(statusDir(), 0o700)
 		out, _ := json.Marshal(s)
 		p := filepath.Join(statusDir(), s.SessionID+".json")
@@ -78,7 +80,7 @@ func statusLine(s statusSnap) string {
 	if s.Model.DisplayName != "" {
 		parts = append(parts, s.Model.DisplayName)
 	}
-	if used, size := s.ContextWindow.used(); size > 0 {
+	if used, size := s.ContextWindow.Used(); size > 0 {
 		parts = append(parts, fmt.Sprintf("ctx %s/%s", tokens(used), tokens(size)))
 	}
 	for _, k := range []string{"five_hour", "seven_day"} {
@@ -89,7 +91,7 @@ func statusLine(s statusSnap) string {
 	return strings.Join(parts, " · ")
 }
 
-func (c *ctxWindow) used() (used, size int64) {
+func (c *ctxWindow) Used() (used, size int64) {
 	if c == nil {
 		return 0, 0
 	}
@@ -139,8 +141,8 @@ func pruneStatus() {
 	}
 }
 
-func readStatus(sid string) *statusSnap {
-	if !reSessionID.MatchString(sid) {
+func ReadStatus(sid string) *statusSnap {
+	if !ReSessionID.MatchString(sid) {
 		return nil
 	}
 	b, err := os.ReadFile(filepath.Join(statusDir(), sid+".json"))
@@ -154,10 +156,10 @@ func readStatus(sid string) *statusSnap {
 	return &s
 }
 
-// claudeUsage is the newest plan usage any session of the signed-in account
+// ClaudeUsage is the newest plan usage any session of the signed-in account
 // saw, the account, and the tokens counted per account.
-func claudeUsage() map[string]any {
-	out := map[string]any{"limits": map[string]limit{}, "at": 0, "statusline": statuslineInstalled(), "tokens": tokenLedger.tokenTotals()}
+func ClaudeUsage() map[string]any {
+	out := map[string]any{"limits": map[string]limit{}, "at": 0, "statusline": statuslineInstalled(), "tokens": TokenLedger.TokenTotals()}
 	var asked, copilot map[string]any
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -229,8 +231,8 @@ func planName(tier, billing string) string {
 	return strings.Join(w, " ")
 }
 
-func cmdUsage() {
-	b, _ := json.MarshalIndent(claudeUsage(), "", "  ")
+func CmdUsage() {
+	b, _ := json.MarshalIndent(ClaudeUsage(), "", "  ")
 	fmt.Println(string(b))
 }
 
@@ -245,7 +247,7 @@ func statuslineInstalled() bool {
 }
 
 func statuslineInstall() {
-	if msg := statuslineEnsure(); msg != "" {
+	if msg := StatuslineEnsure(); msg != "" {
 		fmt.Println(msg)
 	} else {
 		fmt.Println("the status line is already set up")
@@ -257,7 +259,7 @@ func statuslineInstall() {
 func stableExe() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return filepath.Join(supportDir(), "uniai")
+		return filepath.Join(config.SupportDir(), "uniai")
 	}
 	exe, _ = filepath.EvalSymlinks(exe)
 	if i := strings.Index(exe, "/Cellar/uniai/"); i >= 0 {
@@ -266,10 +268,10 @@ func stableExe() string {
 	return exe
 }
 
-// statuslineEnsure adds the status line to Claude Code's user settings,
+// StatuslineEnsure adds the status line to Claude Code's user settings,
 // unless one is set already (that one stays: the phone then shows no usage).
 // It says what it did, or "" when there was nothing to do.
-func statuslineEnsure() string {
+func StatuslineEnsure() string {
 	p := claudeSettingsPath()
 	if _, err := os.Stat(filepath.Dir(p)); err != nil {
 		return "" // no Claude Code here

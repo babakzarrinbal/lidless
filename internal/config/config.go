@@ -47,6 +47,12 @@ func Dir() string {
 	return filepath.Join(home, ".config", "uniai")
 }
 
+// SupportDir is where the agent binary and Claude's status files live.
+func SupportDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Library", "Application Support", "Uniai")
+}
+
 func Path() string        { return filepath.Join(Dir(), "agent.json") }
 func PairingPath() string { return filepath.Join(Dir(), "pairing.json") }
 

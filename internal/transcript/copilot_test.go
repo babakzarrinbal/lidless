@@ -1,4 +1,4 @@
-package main
+package transcript
 
 import (
 	"os"
@@ -55,11 +55,11 @@ func TestCopilotConversations(t *testing.T) {
 	os.MkdirAll(e, 0o755)
 	os.WriteFile(filepath.Join(e, "workspace.yaml"), []byte("cwd: /work/app\n"), 0o644)
 
-	l := copilotConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/work/app" })
+	l := CopilotConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/work/app" })
 	if len(l) != 1 || l[0].ID != id || l[0].Tool != "copilot" || l[0].Title != "Fix the build" || l[0].Prompt != "thanks" || l[0].Running {
 		t.Fatalf("got %+v", l)
 	}
-	if l := copilotConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/elsewhere" }); len(l) != 0 {
+	if l := CopilotConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/elsewhere" }); len(l) != 0 {
 		t.Fatalf("other folder: got %+v", l)
 	}
 }
@@ -77,15 +77,15 @@ func TestCopilotCommand(t *testing.T) {
 	sh := filepath.Join(home, "sh")
 	os.WriteFile(sh, []byte("#!/bin/sh\nshift 2\nPATH=\""+local+":"+brew+":/usr/bin:/bin\" exec /bin/sh -c \"$@\"\n"), 0o755)
 
-	if _, err := copilotCommand(sh, "copilot --continue"); err == nil || !strings.Contains(err.Error(), "shim") {
+	if _, err := CopilotCommand(sh, "copilot --continue"); err == nil || !strings.Contains(err.Error(), "shim") {
 		t.Fatalf("only the shim: got %v", err)
 	}
 	os.WriteFile(filepath.Join(brew, "copilot"), []byte("#!/bin/sh\n"), 0o755)
-	got, err := copilotCommand(sh, "copilot --resume abc")
+	got, err := CopilotCommand(sh, "copilot --resume abc")
 	if want := "'" + filepath.Join(brew, "copilot") + "' --resume abc"; err != nil || got != want {
 		t.Fatalf("got %q %v, want %q", got, err, want)
 	}
-	if got, _ := copilotCommand(sh, "claude --continue"); got != "claude --continue" {
+	if got, _ := CopilotCommand(sh, "claude --continue"); got != "claude --continue" {
 		t.Fatalf("not copilot: got %q", got)
 	}
 }

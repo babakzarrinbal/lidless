@@ -34,7 +34,9 @@ import (
 
 	"uniai/internal/config"
 	"uniai/internal/rpc"
+	"uniai/internal/transcript"
 	"uniai/internal/ulog"
+	"uniai/internal/usage"
 )
 
 const label = "org.zarrinbal.uniai"
@@ -75,9 +77,9 @@ func main() {
 	case "serve":
 		cmdServe()
 	case "statusline":
-		cmdStatusline(args)
+		usage.CmdStatusline(args)
 	case "usage":
-		cmdUsage()
+		usage.CmdUsage()
 	case "hold":
 		cmdHold(args)
 	case "reload":
@@ -214,11 +216,6 @@ func cmdRevoke(args []string) {
 	fmt.Printf("removed %s (its open sessions close within seconds)\n", name)
 }
 
-func supportDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "Application Support", "Uniai")
-}
-
 func plistPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Library", "LaunchAgents", label+".plist")
@@ -271,10 +268,10 @@ func cmdInstall() {
 	if err != nil {
 		die("%v", err)
 	}
-	if err := os.MkdirAll(supportDir(), 0o700); err != nil {
+	if err := os.MkdirAll(config.SupportDir(), 0o700); err != nil {
 		die("%v", err)
 	}
-	bin := filepath.Join(supportDir(), "uniai")
+	bin := filepath.Join(config.SupportDir(), "uniai")
 	if exe != bin {
 		if err := copyFile(exe, bin); err != nil {
 			die("%v", err)
@@ -367,10 +364,10 @@ func cmdServe() {
 	if err != nil {
 		die("%v", err)
 	}
-	if msg := statuslineEnsure(); msg != "" {
+	if msg := usage.StatuslineEnsure(); msg != "" {
 		logf("%s", msg)
 	}
-	keepCounting()
+	usage.KeepCounting()
 	if c.RoomKey == "" { // configs from before the relay checked agents
 		c.RoomKey = config.RandHex(32)
 		if err := c.Save(); err != nil {
@@ -404,4 +401,13 @@ func cmdServe() {
 	}
 	logf("uniai serving %q, %d paired phone(s)", a.host, len(c.Devices))
 	a.run()
+}
+
+// cmdVSCode installs the extension: `uniai vscode`.
+func cmdVSCode(args []string) {
+	msg, err := transcript.VSCodeExtInstall(len(args) > 0 && args[0] == "-force")
+	if err != nil {
+		die("%v", err)
+	}
+	fmt.Println(msg)
 }

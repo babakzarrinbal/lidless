@@ -1,4 +1,4 @@
-package main
+package transcript
 
 // GitHub Copilot CLI's sessions, for the phone's chat view and lists. Copilot
 // keeps each session in ~/.copilot/session-state/<id>/: workspace.yaml (the
@@ -18,6 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"uniai/internal/shellenv"
+	"uniai/internal/usage"
 )
 
 func copilotHome() string {
@@ -28,7 +31,7 @@ func copilotHome() string {
 // copilotTranscript finds the events file of a Copilot process running under pid.
 func copilotTranscript(pid int) string {
 	kids := map[int][]int{}
-	for c, p := range parents() {
+	for c, p := range Parents() {
 		kids[p] = append(kids[p], c)
 	}
 	root := copilotHome()
@@ -103,9 +106,9 @@ func copilotShim(path string) bool {
 	return strings.Contains(path, "github.copilot-chat") || strings.Contains(path, "/copilotCli/")
 }
 
-// copilotCommand swaps the bare "copilot" at the start of run for the real
+// CopilotCommand swaps the bare "copilot" at the start of run for the real
 // CLI's path.
-func copilotCommand(shell, run string) (string, error) {
+func CopilotCommand(shell, run string) (string, error) {
 	name, rest, _ := strings.Cut(run, " ")
 	if name != "copilot" {
 		return run, nil
@@ -114,14 +117,7 @@ func copilotCommand(shell, run string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(shellQuote(bin) + " " + rest), nil
-}
-
-func shellQuote(s string) string {
-	if !strings.ContainsAny(s, " '\"\\$`!*?&;|<>()[]{}#~") {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return strings.TrimSpace(shellenv.Quote(bin) + " " + rest), nil
 }
 
 // copilotCwd is the folder a session ran in, from its workspace.yaml.
@@ -138,9 +134,9 @@ func copilotCwd(sessionDir string) string {
 	return ""
 }
 
-// copilotConversations lists Copilot's sessions newest first, at most n of
+// CopilotConversations lists Copilot's sessions newest first, at most n of
 // those keep takes (keep sees each one's Dir), like [conversations].
-func copilotConversations(terms []*Term, n int, keep func(*Conversation) bool) []Conversation {
+func CopilotConversations(terms []*Terminal, n int, keep func(*Conversation) bool) []Conversation {
 	files, _ := filepath.Glob(filepath.Join(copilotHome(), "*", "events.jsonl"))
 	var list []Conversation
 	for _, f := range files {
@@ -149,7 +145,7 @@ func copilotConversations(terms []*Term, n int, keep func(*Conversation) bool) [
 			continue
 		}
 		id := filepath.Base(filepath.Dir(f))
-		if !reSessionID.MatchString(id) {
+		if !usage.ReSessionID.MatchString(id) {
 			continue
 		}
 		list = append(list, Conversation{ID: id, Tool: "copilot", Mtime: st.ModTime().Unix(), Size: st.Size(), path: f})

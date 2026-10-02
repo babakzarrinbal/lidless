@@ -24,6 +24,9 @@ import (
 	"golang.org/x/term"
 
 	"uniai/internal/config"
+	"uniai/internal/shellenv"
+	"uniai/internal/transcript"
+	"uniai/internal/usage"
 )
 
 const detachKey = 0x1d // Ctrl-]
@@ -132,13 +135,13 @@ func cmdAgentCLI(tool string, args []string) {
 	}
 	if tool == "claude" {
 		if sid := resumeTarget(cwd, args); sid != "" {
-			if pid := claudeRunning()[sid]; pid != 0 {
+			if pid := transcript.ClaudeRunning()[sid]; pid != 0 {
 				if id := holderOf(pid); id != 0 {
 					fmt.Fprintf(os.Stderr, "uniai: joining terminal %d, where this conversation is open\n", id)
 					os.Exit(attachTerm(id))
 				}
 				fmt.Fprintf(os.Stderr, "uniai: quitting the Claude that has this conversation open elsewhere (pid %d)…\n", pid)
-				if err := stopClaude(sid); err != nil {
+				if err := transcript.StopClaude(sid); err != nil {
 					die("%v", err)
 				}
 			}
@@ -150,7 +153,7 @@ func cmdAgentCLI(tool string, args []string) {
 	}
 	q := []string{tool}
 	for _, a := range args {
-		q = append(q, shellQuote(a))
+		q = append(q, shellenv.Quote(a))
 	}
 	run := strings.Join(q, " ")
 	shell, typed, err := typedCommand(shell, tool, run)
@@ -195,10 +198,10 @@ func realPath(p string) string {
 func resumeTarget(cwd string, args []string) string {
 	for i, a := range args {
 		switch {
-		case (a == "--resume" || a == "-r") && i+1 < len(args) && reSessionID.MatchString(args[i+1]):
+		case (a == "--resume" || a == "-r") && i+1 < len(args) && usage.ReSessionID.MatchString(args[i+1]):
 			return args[i+1]
 		case strings.HasPrefix(a, "--resume="):
-			if v := strings.TrimPrefix(a, "--resume="); reSessionID.MatchString(v) {
+			if v := strings.TrimPrefix(a, "--resume="); usage.ReSessionID.MatchString(v) {
 				return v
 			}
 		case a == "--continue" || a == "-c":
@@ -209,7 +212,7 @@ func resumeTarget(cwd string, args []string) string {
 }
 
 func newestConversation(dir string) string {
-	files, _ := filepath.Glob(filepath.Join(claudeProjectDir(dir), "*.jsonl"))
+	files, _ := filepath.Glob(filepath.Join(transcript.ClaudeProjectDir(dir), "*.jsonl"))
 	var best string
 	var at time.Time
 	for _, f := range files {
@@ -226,7 +229,7 @@ func holderOf(pid int) uint32 {
 	for _, i := range holdList() {
 		shells[i.PID] = i.ID
 	}
-	pp := parents()
+	pp := transcript.Parents()
 	for p, n := pid, 0; p > 1 && n < 20; p, n = pp[p], n+1 {
 		if id, ok := shells[p]; ok {
 			return id
@@ -347,11 +350,11 @@ func cmdShellSetup(args []string) {
 	bin := "uniai"
 	if _, err := exec.LookPath("uniai"); err != nil {
 		// Not on PATH: the LaunchAgent's copy, else this one.
-		bin = filepath.Join(supportDir(), "uniai")
+		bin = filepath.Join(config.SupportDir(), "uniai")
 		if _, err := os.Stat(bin); err != nil {
 			bin = must(os.Executable())
 		}
-		bin = shellQuote(bin)
+		bin = shellenv.Quote(bin)
 	}
 	block := fmt.Sprintf("\n%s\nalias claude='%s claude'\nalias copilot='%s copilot'\n", shellSetupMark, bin, bin)
 	home, _ := os.UserHomeDir()

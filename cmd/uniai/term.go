@@ -11,10 +11,11 @@ import (
 	"net"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"uniai/internal/transcript"
 )
 
 // Term is the agent's end of one holder. Its output is an append-only stream
@@ -184,23 +185,6 @@ func (m *Terms) event(ev string, p map[string]any) {
 	}
 }
 
-func shellEnv() []string {
-	env := []string{}
-	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
-		switch k {
-		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "XPC_FLAGS", "UNIAI_TERM":
-			continue
-		}
-		env = append(env, kv)
-	}
-	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Uniai")
-	if os.Getenv("LANG") == "" {
-		env = append(env, "LANG=en_US.UTF-8")
-	}
-	return env
-}
-
 // typedCommand is what to type into a new shell to start run: Copilot's
 // command needs the shell's PATH (bash's login profile often lacks
 // Homebrew's, zsh's has it), so it may change the shell too.
@@ -208,14 +192,14 @@ func typedCommand(shell, kind, run string) (string, string, error) {
 	if kind != "copilot" {
 		return shell, run, nil
 	}
-	typed, err := copilotCommand(shell, run)
+	typed, err := transcript.CopilotCommand(shell, run)
 	if err == nil {
 		return shell, typed, nil
 	}
 	if shell == "/bin/zsh" {
 		return "", "", err
 	}
-	if typed, err = copilotCommand("/bin/zsh", run); err != nil {
+	if typed, err = transcript.CopilotCommand("/bin/zsh", run); err != nil {
 		return "", "", err
 	}
 	return "/bin/zsh", typed, nil
@@ -374,3 +358,22 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 	m.changed()
 	return t, nil
 }
+
+// forChat is this terminal as the transcript readers see it.
+func (t *Term) forChat() *transcript.Terminal {
+	return &transcript.Terminal{ID: t.ID, Kind: t.Kind, Session: t.Session, Dir: t.Dir, Pid: t.pid, Run: t.run,
+		Title: func() string { return t.info().Title }}
+}
+
+// forChat is every terminal as the transcript readers see them.
+func (m *Terms) forChat() []*transcript.Terminal {
+	ts := m.all()
+	out := make([]*transcript.Terminal, len(ts))
+	for i, t := range ts {
+		out[i] = t.forChat()
+	}
+	return out
+}
+
+// mirrorVSCode runs for the agent's life (transcript.MirrorVSCode).
+func (m *Terms) mirrorVSCode() { transcript.MirrorVSCode(m.forChat) }

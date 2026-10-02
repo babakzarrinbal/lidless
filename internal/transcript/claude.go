@@ -1,4 +1,4 @@
-package main
+package transcript
 
 // What the phone lists around a Claude session: the folder's earlier
 // conversations (to resume or read) and the slash commands it can type.
@@ -18,12 +18,14 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"uniai/internal/usage"
 )
 
 const (
 	listHead = 64 << 10  // the first message is in here
 	listTail = 256 << 10 // Claude re-appends the title often, so it is in here
-	listMax  = 60
+	ListMax  = 60
 )
 
 type Conversation struct {
@@ -40,15 +42,15 @@ type Conversation struct {
 	path    string
 }
 
-// claudeProjectDir is where Claude Code keeps a folder's transcripts.
-func claudeProjectDir(dir string) string {
+// ClaudeProjectDir is where Claude Code keeps a folder's transcripts.
+func ClaudeProjectDir(dir string) string {
 	home, _ := os.UserHomeDir()
 	enc := regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(filepath.Clean(dir), "-")
 	return filepath.Join(home, ".claude", "projects", enc)
 }
 
-// claudeRunning maps the session id of each live Claude process to its pid.
-func claudeRunning() map[string]int {
+// ClaudeRunning maps the session id of each live Claude process to its pid.
+func ClaudeRunning() map[string]int {
 	home, _ := os.UserHomeDir()
 	files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
 	out := map[string]int{}
@@ -71,14 +73,14 @@ func claudeRunning() map[string]int {
 	return out
 }
 
-// stopClaude quits the Claude process that has conversation sid open (a
+// StopClaude quits the Claude process that has conversation sid open (a
 // terminal or an editor on the Mac), so the phone can take it over without
 // two Claudes writing to one conversation.
-func stopClaude(sid string) error {
-	if !reSessionID.MatchString(sid) {
+func StopClaude(sid string) error {
+	if !usage.ReSessionID.MatchString(sid) {
 		return errors.New("not a conversation id")
 	}
-	pid := claudeRunning()[sid]
+	pid := ClaudeRunning()[sid]
 	if pid == 0 {
 		return nil // already gone
 	}
@@ -86,14 +88,29 @@ func stopClaude(sid string) error {
 	if !strings.Contains(strings.ToLower(string(out)), "claude") {
 		return errors.New("the process on that conversation is not Claude; quit it on the Mac")
 	}
-	if !quitClaude(pid, 5*time.Second) {
+	if !QuitClaude(pid, 5*time.Second) {
 		return errors.New("Claude on the Mac is still running; quit it there")
 	}
 	return nil
 }
 
-// parents maps every process to its parent.
-func parents() map[int]int {
+// QuitClaude asks Claude to quit (it saves the conversation first) and waits
+// up to wait for it to go.
+func QuitClaude(pid int, wait time.Duration) bool {
+	if syscall.Kill(pid, syscall.SIGTERM) != nil {
+		return syscall.Kill(pid, 0) == syscall.ESRCH
+	}
+	for end := time.Now().Add(wait); time.Now().Before(end); {
+		time.Sleep(100 * time.Millisecond)
+		if syscall.Kill(pid, 0) == syscall.ESRCH {
+			return true
+		}
+	}
+	return false
+}
+
+// Parents maps every process to its parent.
+func Parents() map[int]int {
 	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=").Output()
 	m := map[int]int{}
 	if err != nil {
@@ -110,18 +127,18 @@ func parents() map[int]int {
 	return m
 }
 
-func chatSessions(dir string, terms []*Term) ([]Conversation, error) {
-	files, err := filepath.Glob(filepath.Join(claudeProjectDir(dir), "*.jsonl"))
+func ChatSessions(dir string, terms []*Terminal) ([]Conversation, error) {
+	files, err := filepath.Glob(filepath.Join(ClaudeProjectDir(dir), "*.jsonl"))
 	if err != nil {
 		return nil, err
 	}
 	in := func(c *Conversation) bool { return c.Dir == dir }
-	return mergeConversations(conversations(files, terms, listMax, nil), copilotConversations(terms, listMax, in), listMax), nil
+	return MergeConversations(conversations(files, terms, ListMax, nil), CopilotConversations(terms, ListMax, in), ListMax), nil
 }
 
-// mergeConversations is Claude's and Copilot's conversations together,
+// MergeConversations is Claude's and Copilot's conversations together,
 // newest first, at most n.
-func mergeConversations(a, b []Conversation, n int) []Conversation {
+func MergeConversations(a, b []Conversation, n int) []Conversation {
 	out := append(a, b...)
 	sortConversations(out)
 	if len(out) > n {
@@ -135,14 +152,14 @@ func sortConversations(l []Conversation) {
 }
 
 // termOf is the agent's terminal that process pid runs in (0: elsewhere).
-func termOf(pid int, terms []*Term) uint32 {
+func termOf(pid int, terms []*Terminal) uint32 {
 	shells := map[int]uint32{}
 	for _, t := range terms {
-		if t.pid > 0 {
-			shells[t.pid] = t.ID
+		if t.Pid > 0 {
+			shells[t.Pid] = t.ID
 		}
 	}
-	pp := parents()
+	pp := Parents()
 	for p, n := pp[pid], 0; p > 1 && n < 20; p, n = pp[p], n+1 {
 		if id, ok := shells[p]; ok {
 			return id
@@ -151,16 +168,16 @@ func termOf(pid int, terms []*Term) uint32 {
 	return 0
 }
 
-// chatRecent is the newest conversations of every folder, each with the
+// ChatRecent is the newest conversations of every folder, each with the
 // folder it ran in; keep says which folders the phone may see.
-func chatRecent(terms []*Term, n int, keep func(dir string) bool) []Conversation {
+func ChatRecent(terms []*Terminal, n int, keep func(dir string) bool) []Conversation {
 	home, _ := os.UserHomeDir()
 	files, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", "*.jsonl"))
 	claude := conversations(files, terms, n, func(c *Conversation) bool {
 		c.Dir = transcriptCwd(c.path)
 		return c.Dir != "" && keep(c.Dir)
 	})
-	return mergeConversations(claude, copilotConversations(terms, n, func(c *Conversation) bool { return keep(c.Dir) }), n)
+	return MergeConversations(claude, CopilotConversations(terms, n, func(c *Conversation) bool { return keep(c.Dir) }), n)
 }
 
 // transcriptCwd is the folder Claude ran in, from the transcript's first
@@ -186,8 +203,8 @@ func transcriptCwd(path string) string {
 
 // conversations lists transcripts newest first, at most n of those keep
 // takes, with their titles and whether (and where) Claude has them open.
-func conversations(files []string, terms []*Term, n int, keep func(*Conversation) bool) []Conversation {
-	running := claudeRunning()
+func conversations(files []string, terms []*Terminal, n int, keep func(*Conversation) bool) []Conversation {
+	running := ClaudeRunning()
 	list := []Conversation{}
 	for _, f := range files {
 		st, err := os.Stat(f)
@@ -340,7 +357,7 @@ var builtinCommands = map[string][][2]string{
 	},
 }
 
-func chatCommands(dir, kind string) []SlashCommand {
+func ChatCommands(dir, kind string) []SlashCommand {
 	if kind != "copilot" {
 		kind = "claude"
 	}
