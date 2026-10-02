@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,10 +85,57 @@ func TestVSCodeChat(t *testing.T) {
 	cp := filepath.Join(home, ".copilot", "session-state", "7bc294a5-fb02-4f4d-9800-f06e9d77dde1")
 	os.MkdirAll(cp, 0o755)
 	os.WriteFile(filepath.Join(cp, "workspace.yaml"), []byte("cwd: /w/my app\n"), 0o644)
-	os.WriteFile(filepath.Join(cp, "events.jsonl"), []byte(`{"type":"user.message","data":{"content":"`+h["prompt"].(string)+`"}}`+"\n"), 0o644)
+	os.WriteFile(filepath.Join(cp, "events.jsonl"), []byte(`{"type":"user.message","data":{"content":`+quote(h["prompt"].(string))+`}}`+"\n"), 0o644)
 	all := WithVSCode(CopilotConversations(nil, 10, nil), nil, 10, nil)
 	if len(all) != 1 || all[0].Tool != "copilot" || all[0].From != id || all[0].Title != "Build fix" || all[0].Prompt != "" {
 		t.Fatalf("moved: %+v", all)
+	}
+
+	// Its chat view: the VS Code chat's history, the line where it moved, then
+	// the session, without the chat in the session itself.
+	if strings.Contains(h["prompt"].(string), "Looking at it") {
+		t.Errorf("the prompt carries the chat: %v", h["prompt"])
+	}
+	events := filepath.Join(cp, "events.jsonl")
+	f, _ := os.OpenFile(events, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString(`{"type":"assistant.message","data":{"content":"We left off at the build."}}` + "\n")
+	f.Close()
+	copilotPath = func(int) string { return events }
+	defer func() { copilotPath = copilotTranscript }()
+	term := &Terminal{ID: 4, Kind: "copilot"}
+	r, err := ChatRead(term, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r["items"].([]ChatItem)
+	if len(got) != 2 || got[0] != (ChatItem{K: "note", Text: movedNote}) || got[1].Text != "We left off at the build." {
+		t.Fatalf("read: %+v", got)
+	}
+	name, start := r["path"].(string), r["start"].(int64)
+	if start <= 0 {
+		t.Fatalf("no history before the session: start %d", start)
+	}
+	if r2, _ := ChatRead(term, r["next"].(int64), name); r2["reset"] != false || len(r2["items"].([]ChatItem)) != 0 {
+		t.Fatalf("read on: %+v", r2)
+	}
+	o, err := ChatOlder(term, start, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	older := o["items"].([]ChatItem)
+	if o["start"].(int64) != 0 || len(older) != len(want) {
+		t.Fatalf("older: %+v", o)
+	}
+	for i := range want {
+		if older[i] != want[i] {
+			t.Errorf("older %d: %+v, want %+v", i, older[i], want[i])
+		}
+	}
+
+	// Moved by an older agent: no snapshot yet, made from the chat.
+	os.Remove(filepath.Join(vscodeCache(), id+".items.jsonl"))
+	if r, _ := ChatRead(term, 0, ""); r["start"].(int64) != start {
+		t.Fatalf("snapshot again: %+v", r)
 	}
 }
 
@@ -101,4 +149,9 @@ func TestVSCodeEmptyWindow(t *testing.T) {
 	if l := VSCodeConversations(nil, 10, nil); len(l) != 1 || l[0].Dir != home || l[0].Title != "hi" {
 		t.Fatalf("list: %+v", l)
 	}
+}
+
+func quote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

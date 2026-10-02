@@ -250,6 +250,9 @@ func copilotItems(line []byte) []ChatItem {
 		if d.Source != "" {
 			return nil
 		}
+		if reHandoff.MatchString(d.Content) { // the prompt that moved a VS Code chat here (moved.go)
+			return []ChatItem{{K: "note", Text: movedNote}}
+		}
 		return userText(d.Content)
 	case "assistant.message":
 		if t := strings.TrimSpace(d.Content); t != "" {

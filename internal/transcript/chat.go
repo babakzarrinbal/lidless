@@ -79,6 +79,7 @@ func claudeTranscript(pid int) string {
 func ChatRead(t *Terminal, from int64, had string) (map[string]any, error) {
 	copilot := t.Kind == "copilot"
 	path, name, parse := chatSource(t)
+	_, name, base := movedSource(t, path, name)
 	if path == "" {
 		return map[string]any{"path": "", "next": 0, "items": []ChatItem{}}, nil
 	}
@@ -92,7 +93,9 @@ func ChatRead(t *Terminal, from int64, had string) (map[string]any, error) {
 		return nil, err
 	}
 	size := st.Size()
-	reset := from <= 0 || from > size || had != name
+	first := from <= 0
+	from -= base // a moved chat's offsets count its history first (moved.go)
+	reset := first || from < 0 || from > size || had != name
 	if reset {
 		from = max(0, size-chatTail)
 	}
@@ -120,9 +123,9 @@ func ChatRead(t *Terminal, from int64, had string) (map[string]any, error) {
 			ctx = c
 		}
 	}
-	out := map[string]any{"path": name, "next": from + int64(end), "reset": reset, "items": items}
+	out := map[string]any{"path": name, "next": base + from + int64(end), "reset": reset, "items": items}
 	if reset {
-		out["start"] = from // where the phone's items begin: chat.older reads before it
+		out["start"] = base + from // where the phone's items begin: chat.older reads before it
 	}
 	if copilot {
 		return out, nil
@@ -151,11 +154,14 @@ func ChatRead(t *Terminal, from int64, had string) (map[string]any, error) {
 	return out, nil
 }
 
+// copilotPath finds a Copilot's events.jsonl from its pid (tests swap it).
+var copilotPath = copilotTranscript
+
 // chatSource is the terminal's transcript, the name the phone knows it by, and
 // how to read its lines.
 func chatSource(t *Terminal) (path, name string, parse func([]byte) []ChatItem) {
 	if t.Kind == "copilot" {
-		path = copilotTranscript(t.Pid)
+		path = copilotPath(t.Pid)
 		// Every Copilot conversation is events.jsonl: its folder's name.
 		return path, filepath.Base(filepath.Dir(path)) + ".jsonl", copilotItems
 	}
@@ -170,8 +176,16 @@ func chatSource(t *Terminal) (path, name string, parse func([]byte) []ChatItem) 
 // shows; another one returns nothing.
 func ChatOlder(t *Terminal, before int64, had string) (map[string]any, error) {
 	path, name, parse := chatSource(t)
+	moved, name, base := movedSource(t, path, name)
 	if path == "" || name != had {
 		return map[string]any{"path": name, "start": before, "items": []ChatItem{}}, nil
+	}
+	if moved != nil && before <= base { // the moved chat's history
+		items, start, err := moved.older(before)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"path": name, "start": start, "items": items}, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -182,11 +196,24 @@ func ChatOlder(t *Terminal, before int64, had string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	items, start, err := olderItems(f, min(before, st.Size()), parse)
+	items, start, err := olderItems(f, min(before-base, st.Size()), parse)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"path": name, "start": start, "items": items}, nil
+	return map[string]any{"path": name, "start": base + start, "items": items}, nil
+}
+
+// movedSource is the VS Code chat a Copilot session was moved from, the
+// session's name for the phone then, and where its own offsets begin (moved.go).
+func movedSource(t *Terminal, path, name string) (*movedChat, string, int64) {
+	if t.Kind != "copilot" || path == "" {
+		return nil, name, 0
+	}
+	m := movedFrom(path)
+	if m == nil {
+		return nil, name, 0
+	}
+	return m, m.name(name), m.base
 }
 
 // olderItems parses the whole lines in the page before offset before. A line

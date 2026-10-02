@@ -110,7 +110,10 @@ without one is not shown on phones (`uniai claude` always sets one).
   offers a single **Move here** (`chat.stop` quits that Claude or Copilot
   CLI, which saves; then it resumes in a new shared terminal). A VS Code
   Copilot Chat moves the same way: `chat.handoff` writes it out as markdown
-  and a Copilot CLI in a new shared terminal carries it on (`vscode.go`).
+  and a Copilot CLI in a new shared terminal carries it on (`vscode.go`),
+  told to read only the end of it. The chat view shows the VS Code chat's
+  history first (a snapshot of its items), then "Disconnected from the
+  original chat", then the session (`moved.go`).
 - The chat view reads transcripts, not the screen:
   `~/.claude/projects/<folder>/<conversation>.jsonl` and
   `~/.copilot/session-state/<id>/events.jsonl` (`chat.go`, `claude.go`,

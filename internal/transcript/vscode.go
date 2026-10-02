@@ -13,7 +13,9 @@ package transcript
 //
 // "Move here" in the app carries a chat on with Copilot in a shared terminal:
 // chat.handoff writes it out as <id>.md (VSCodeHandoff) and Copilot starts
-// with a prompt naming that file. So a terminal whose command names <id>.md
+// with a short prompt naming that file: it reads only the end, and looks
+// further back when it needs to, rather than taking the whole chat in again.
+// The chat view shows the chat's history before the session (moved.go). So a terminal whose command names <id>.md
 // carries chat <id> (the chat lists that terminal), and a Copilot session
 // whose first message names it has the chat's title and stands in for the
 // chat in the lists (WithVSCode). VS Code's chats are listed only when the app
@@ -203,10 +205,15 @@ func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
+	items := vscodeItems(m)
+	if err := writeItems(filepath.Join(vscodeCache(), id+".items.jsonl"), items); err != nil {
+		return nil, err
+	}
 	var b strings.Builder
 	title, _ := m["customTitle"].(string)
-	b.WriteString("# " + firstLine(title, "VS Code chat") + "\n\nA GitHub Copilot Chat conversation in VS Code, in " + tilde(dir) + ".\n")
-	for _, it := range vscodeItems(m) {
+	title = firstLine(title, "VS Code chat")
+	b.WriteString("# " + title + "\n\nA GitHub Copilot Chat conversation in VS Code, in " + tilde(dir) + ".\n")
+	for _, it := range items {
 		switch it.K {
 		case "user":
 			b.WriteString("\n## Me\n\n" + it.Text + "\n")
@@ -235,8 +242,9 @@ func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error
 	}
 	return map[string]any{
 		"path": out,
-		"prompt": "This carries on a conversation I had in VS Code's Copilot Chat. Read its transcript, " + out +
-			", then tell me in a few lines where we left off, and wait for my next message.",
+		"prompt": "This carries on my VS Code Copilot Chat conversation \"" + title + "\". Its transcript is " + out +
+			". Don't read all of it: read only its last part to see where we left off, and look further back only " +
+			"when I refer to something earlier. Tell me in a line or two where we left off, and wait for my next message.",
 	}, nil
 }
 

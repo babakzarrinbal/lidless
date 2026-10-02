@@ -7,7 +7,8 @@ Files: `chat.go` (chat items, `chat.read`/`older`), `claude.go` (Claude Code
 transcripts, running processes, conversation lists), `copilot.go` (Copilot
 CLI), `copilot_session.go` (which session a running Copilot has open), `vscode.go` (VS Code Copilot Chat: listing, handoff to Copilot),
 `vscode_scan.go` (a chat's label without parsing it), `vscode_items.go`
-(reading one VS Code chat file), `doc.go` (`Terminal`).
+(reading one VS Code chat file), `moved.go` (a moved chat's history before
+its Copilot session in the chat view), `doc.go` (`Terminal`).
 
 Entry points: `ChatRead`, `ChatOlder`, `ChatSessions`, `ChatRecent`,
 `ChatCommands`, `WithVSCode`, `VSCodeConversations`, `VSCodeHandoff`,
@@ -17,8 +18,13 @@ Entry points: `ChatRead`, `ChatOlder`, `ChatSessions`, `ChatRecent`,
 "Move here" (the app's `SessionFlows.resumeIn`): `chat.stop` quits the
 outside Claude or Copilot, then the app resumes it in a shared terminal. A VS
 Code chat can't be resumed by a CLI: `chat.handoff` writes it out as
-`<id>.md` and Copilot starts with a prompt naming it. The terminal and the
-Copilot session that follow are tied to the chat by that path (`reHandoff`).
+`<id>.md` and Copilot starts with a short prompt naming it (it reads only the
+end, never the whole chat again). The terminal and the Copilot session that
+follow are tied to the chat by that path (`reHandoff`). The chat view shows
+the chat's history first, from `<id>.items.jsonl` (a snapshot), then
+"Disconnected from the original chat" in place of that prompt, then the
+session: for such a session, `chat.read`/`chat.older` offsets count the
+snapshot's bytes first (`moved.go`).
 
 The agent passes its terminals as `*Terminal` (built in `cmd/uniai/term.go`,
 `forChat`), so this package knows nothing of the agent.
