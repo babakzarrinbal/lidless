@@ -3,6 +3,8 @@
 # the Flutter app uses ~/tools/flutter. Full logs go to build/logs/.
 #
 #   ./dev.sh doctor                is this Mac ready? (tools, untracked files, box ssh; docs/dev-setup.md)
+#   ./dev.sh map                   module map (each README's first line) + files over 400 lines
+#   ./dev.sh test <module>         one module's tests: internal/x, cmd/uniai, a feature name, app/test/x.dart
 #   ./dev.sh go-check              go vet + tests (Docker)
 #   ./dev.sh go <args…>            any go command in Docker (e.g. go get, go test -run X ./cmd/uniai)
 #   ./dev.sh agent                 build bin/uniai (darwin/arm64)
@@ -104,6 +106,32 @@ cmd_go-check() {
 }
 
 cmd_go() { gorun linux arm64 go "$@"; }
+
+# The module map: every module's README first line, then files grown past 400
+# lines (split them). The cheapest way for an agent to find where a change goes.
+cmd_map() {
+  local r
+  for r in $(find cmd internal app/lib -name README.md -not -path '*/build/*' | sort); do
+    printf '%-34s %s\n' "$(dirname "$r")" "$(grep -m1 -vE '^(#|\s*$)' "$r" | cut -c1-90)"
+  done
+  echo
+  find cmd internal app/lib \( -name '*.go' -o -name '*.dart' \) -not -name '*_test.go' -not -path '*/build/*' \
+    -exec wc -l {} + | awk '$2 != "total" && $1 > 400 {printf "too big (%d lines, split it): %s\n", $1, $2}'
+}
+
+# One module's tests: ./dev.sh test internal/holder | cmd/uniai | devices (app/lib/features/devices) | app/test/x.dart
+cmd_test() {
+  local m=${1:?usage: dev.sh test <module>}; m=${m%/}
+  if [ -d "internal/$m" ]; then m=internal/$m; fi
+  if [ -d "app/lib/features/$m" ]; then m=app/lib/features/$m; fi
+  case $m in
+    internal/*|cmd/*) quiet "test-${m//\//-}" gorun linux arm64 go test "./$m/..." ;;
+    app/lib/*) local t=app/test/${m#app/lib/}; [ -e "$t" ] || { echo "no tests at $t"; return 1; }
+      cmd_app-test "${t#app/}" ;;
+    app/test/*) cmd_app-test "${m#app/}" ;;
+    *) echo "unknown module $m: try ./dev.sh map"; return 1 ;;
+  esac
+}
 
 cmd_agent() {
   quiet agent-build gorun darwin arm64 go build -trimpath -ldflags=-s -o bin/uniai ./cmd/uniai
