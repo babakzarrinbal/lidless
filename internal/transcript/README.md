@@ -6,7 +6,8 @@ Recent list, and moves an outside conversation into a shared terminal.
 Files: `chat.go` (chat items, `chat.read`/`older`), `claude.go` (Claude Code
 transcripts, running processes, conversation lists), `copilot.go` (Copilot
 CLI), `copilot_session.go` (which session a running Copilot has open), `vscode.go` (VS Code Copilot Chat: listing, handoff to Copilot),
-`vscode_items.go` (reading one VS Code chat file), `doc.go` (`Terminal`).
+`vscode_scan.go` (a chat's label without parsing it), `vscode_items.go`
+(reading one VS Code chat file), `doc.go` (`Terminal`).
 
 Entry points: `ChatRead`, `ChatOlder`, `ChatSessions`, `ChatRecent`,
 `ChatCommands`, `WithVSCode`, `VSCodeConversations`, `VSCodeHandoff`,
@@ -28,6 +29,10 @@ Traps: transcripts are read from a byte offset, never whole. `ps` is how a
 terminal finds its Claude: keep `Parents` cheap. Never run a copilot shim
 from VS Code (`copilotBin` skips it), and never quit VS Code's Copilot
 runtime (`copilotCLI` tells it apart): it serves every chat in VS Code.
+VS Code's chats live in `workspaceStorage/<hash>/chatSessions/`, spelled
+exactly so: macOS hides a wrong case, Linux CI does not. Listing them only
+ever scans each file (`vscodeScan`) — replaying one (`vscodeState`) costs its
+whole size, and chats here run past 100 MB.
 A resumed Copilot (1.0.9x) holds no `inuse.<pid>.lock`: its process log
 (`~/.copilot/logs/process-<ms>-<pid>.log`, "Registering foreground session")
 is what ties it to its session, and `events.jsonl` appears only with the

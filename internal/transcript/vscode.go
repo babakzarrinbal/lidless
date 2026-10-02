@@ -1,7 +1,7 @@
 package transcript
 
 // VS Code's Copilot Chat keeps each window's conversations in
-// ~/Library/Application Support/Code/User/workspaceStorage/<hash>/ChatSessions/
+// ~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/
 // (workspace.json next to it names the folder). A <id>.jsonl is a log of
 // edits to one JSON object: {"kind":0,"v":…} is the start, 1 sets the value
 // at path k to v, 2 appends v to the list at k (cut to length i first when i
@@ -83,7 +83,7 @@ func vscodeFiles() map[string]string {
 		wss, _ := filepath.Glob(filepath.Join(u, "workspaceStorage", "*"))
 		for _, ws := range wss {
 			if dir := vscodeFolder(ws); dir != "" {
-				files, _ := filepath.Glob(filepath.Join(ws, "ChatSessions", "*.json*"))
+				files, _ := filepath.Glob(filepath.Join(ws, "chatSessions", "*.json*"))
 				add(dir, files)
 			}
 		}
@@ -93,8 +93,9 @@ func vscodeFiles() map[string]string {
 	return out
 }
 
-// vscodeTitles caches each file's title, last prompt and model by its size and
-// time: a folder can have hundreds of chats, some of them megabytes.
+// vscodeTitles caches each file's title, last prompt and model by its size
+// and time: a folder can have hundreds of chats, some of them over 100 MB.
+// Even a miss only scans the file (vscode_scan.go), never parses it.
 var vscodeTitles = struct {
 	sync.Mutex
 	m map[string]vscodeTitle
@@ -113,24 +114,7 @@ func vscodeTitleOf(c *Conversation) (title, prompt, model string) {
 		return t.title, t.prompt, t.model
 	}
 	t = vscodeTitle{mtime: c.Mtime, size: c.Size}
-	if m, err := vscodeState(c.path); err == nil {
-		reqs := vscodeRequests(m)
-		for _, r := range reqs {
-			if p := vscodeTyped(r); p != "" {
-				if t.title == "" {
-					t.title = p
-				}
-				t.prompt = p
-			}
-			if s, _ := r["modelId"].(string); s != "" {
-				t.model = s
-			}
-		}
-		if s, _ := m["customTitle"].(string); strings.TrimSpace(s) != "" {
-			t.title = s
-		}
-		t.title, t.prompt = firstLine(t.title), firstLine(t.prompt)
-	}
+	t.title, t.prompt, t.model = vscodeScan(c.path)
 	vscodeTitles.Lock()
 	vscodeTitles.m[c.path] = t
 	vscodeTitles.Unlock()

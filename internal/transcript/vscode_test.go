@@ -11,7 +11,7 @@ func TestVSCodeChat(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ws := filepath.Join(home, "Library", "Application Support", "Code", "User", "workspaceStorage", "abc")
-	os.MkdirAll(filepath.Join(ws, "ChatSessions"), 0o755)
+	os.MkdirAll(filepath.Join(ws, "chatSessions"), 0o755)
 	os.WriteFile(filepath.Join(ws, "workspace.json"), []byte(`{"folder":"file:///w/my%20app"}`), 0o644)
 	log := `{"kind":0,"v":{"version":3,"requests":[],"customTitle":null}}
 {"kind":2,"k":["requests"],"v":[{"message":{"text":"fix the build"},"response":[]}]}
@@ -24,8 +24,8 @@ func TestVSCodeChat(t *testing.T) {
 {"kind":1,"k":["requests",1,"result"],"v":{"errorDetails":{"message":"network error"}}}
 `
 	id := "0fb1b9c7-9892-48c1-996a-b6de7726603c"
-	os.WriteFile(filepath.Join(ws, "ChatSessions", id+".jsonl"), []byte(log), 0o644)
-	os.WriteFile(filepath.Join(ws, "ChatSessions", "11111111-0000-0000-0000-000000000000.jsonl"),
+	os.WriteFile(filepath.Join(ws, "chatSessions", id+".jsonl"), []byte(log), 0o644)
+	os.WriteFile(filepath.Join(ws, "chatSessions", "11111111-0000-0000-0000-000000000000.jsonl"),
 		[]byte(`{"kind":0,"v":{"requests":[]}}`+"\n"), 0o644) // nothing said: not listed
 
 	l := VSCodeConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/w/my app" })
@@ -33,7 +33,7 @@ func TestVSCodeChat(t *testing.T) {
 		t.Fatalf("list: %+v", l)
 	}
 	shared := func(string) bool { return true }
-	m, err := vscodeState(filepath.Join(ws, "ChatSessions", id+".jsonl"))
+	m, err := vscodeState(filepath.Join(ws, "chatSessions", id+".jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
