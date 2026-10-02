@@ -14,7 +14,7 @@ math) and `select_handles.dart` (`Grab`, `SelHandle`), `term_menu.dart` (right-c
 
 RPC: `term.list`, `term.open`, `term.attach`, `term.resize`, `term.seen`,
 `term.rename`, `term.close`, `term.unpark` (old agents), `shell.list`,
-`shell.set`. Events: `terms`, `term.exit`, `term.size`, `term.seen`.
+`shell.set`. Events: `terms`, `term.closed`, `term.exit`, `term.size`, `term.seen`.
 
 Tests: `test/features/terminals/sync_test.dart`, `scroll_test.dart`,
 `select_test.dart`.
@@ -22,6 +22,9 @@ Tests: `test/features/terminals/sync_test.dart`, `scroll_test.dart`,
 Traps:
 - terms.dart is about 650 lines: it is one class, and Dart cannot split a
   class without `part`, so it is left whole.
+- Closed is gone everywhere (`term.closed`), ended is kept (`term.exit`, or
+  gone from the list) so its last screen can be read. The Mac lists a closed
+  terminal for seconds more while Claude saves: `Terms._closed` keeps it out.
 - A redraw after `term.size` is not news: it must not mark a terminal unread.
 - An older agent answers `unknown`: handle the RpcError.
 - xterm 4.0 detaches full-screen (alt buffer) lines when they scroll, and a

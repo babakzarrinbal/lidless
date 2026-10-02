@@ -20,6 +20,7 @@ class TermTab {
   final String kind; // the session's agent ('claude', 'copilot') or 'shell'
   final String session, dir;
   String title;
+  String? macTitle; // the name the Mac lists: a change is a rename on some device
   final terminal = Terminal(maxLines: 10000, mouseHandler: const WheelFix());
   final controller = TerminalController();
   final chat = ChatLog(); // the agent's transcript, read on demand

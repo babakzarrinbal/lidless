@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:uniai/app/theme.dart';
+import 'package:uniai/features/chat/chat_links.dart';
 
 /// Your message; a queued one (typed while Claude works) is outlined and
 /// labelled until Claude takes it in.
@@ -100,11 +101,8 @@ class ChatAnswer extends StatelessWidget {
       selectable: true,
       styleSheet: chatMarkdown(context),
       builders: {'pre': ChatCodeBlock(onToShell)},
-      onTapLink: (text, href, title) {
-        if (href == null) return;
-        Clipboard.setData(ClipboardData(text: href));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
-      },
+      onTapLink: (text, href, title) => chatLinks.onTap(context, href),
+      contextMenuBuilder: chatLinks.menu,
     );
     if (!last) return body;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

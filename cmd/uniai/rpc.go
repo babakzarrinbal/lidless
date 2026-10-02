@@ -226,6 +226,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		t.rename(p.Title)
+		s.a.termsChanged() // every device re-reads the list and shows the new name
 		return true, nil
 	case "term.close":
 		t, err := term()
@@ -233,6 +234,9 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			return nil, err
 		}
 		logf("%s closed terminal %d", s.device, t.ID)
+		// Every device drops it now, not when it has ended (seconds, while
+		// Claude saves) and not as "ended": closed is gone everywhere.
+		s.a.termEvent("term.closed", map[string]any{"id": t.ID})
 		sid, pid := claudeIn(t)
 		go func() {
 			// Claude first, so it saves the conversation for whoever picks it up.

@@ -61,7 +61,8 @@ RPC methods (`cmd/uniai/rpc.go`, the switch in `call`): `term.*` (list, open, at
 detach, resize, seen, rename, close; park/unpark only for terminals an old app
 parked), `chat.*` (read, older, sessions, recent, commands, stop quits the Claude or Copilot that has a conversation outside a shared terminal; VS Code's chats are listed only when the app passes `vscode: true`, and handoff writes one out for Copilot in a shared terminal to carry on), `fs.*`,
 `shell.list`/`shell.set`, `sys.status`, `usage`, `tokens.reset`. Events:
-`terms` (a terminal came or went, on any device), `term.exit`, `term.size`
+`terms` (a terminal came or went, or was renamed, on any device), `term.closed` (a device
+closed it: every device drops it at once), `term.exit`, `term.size`
 (the pty was resized: the redraw that follows is not news), `term.seen` (a
 phone showed a terminal up to an offset: read on every phone). A new method needs both sides. The app must handle an
 older agent (an `RpcError` with code `unknown`), because Macs update separately

@@ -37,6 +37,48 @@ void main() {
     terms.dispose();
   });
 
+  testWidgets('a session closed on another device goes here at once; a rename there shows here', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    Map term(int id, String session, {String kind = 'claude', String? title}) =>
+        {'id': id, 'title': title ?? kind, 'kind': kind, 'session': session, 'dir': '/p', 'end': 0};
+    final link = FakeLink({
+      'term.list': [term(7, 's1'), term(8, 's1', kind: 'shell'), term(9, 's2')],
+      'term.attach': {'end': 0},
+      'term.close': {'conversation': ''},
+    });
+    final terms = Terms(link);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(terms.sessions.map((s) => s.id), ['s1', 's2']);
+
+    // The program sets its own title; a rename on the phone beats it.
+    terms.session('s2')!.agent!.terminal.onTitleChange!('✳ Fixing the build');
+    expect(terms.session('s2')!.agent!.title, '✳ Fixing the build');
+    link.answers['term.list'] = [term(7, 's1'), term(8, 's1', kind: 'shell'), term(9, 's2', title: 'build fix')];
+    link.macEvents.add(('terms', null));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(terms.session('s2')!.agent!.title, 'build fix');
+
+    // The phone closed s1: the Mac says so before its terminals have ended,
+    // and still lists them while Claude saves.
+    link.macEvents.add(('term.closed', {'id': 7}));
+    link.macEvents.add(('term.closed', {'id': 8}));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(terms.sessions.map((s) => s.id), ['s2']);
+    link.macEvents.add(('terms', null));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(terms.sessions.map((s) => s.id), ['s2'], reason: 'not adopted again while it ends');
+    link.macEvents.add(('term.exit', {'id': 7, 'code': 0}));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(terms.tabs.map((t) => t.id), [9]);
+
+    // Closed here: the same, while the Mac still lists it.
+    await terms.closeSession('s2');
+    link.macEvents.add(('terms', null));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(terms.sessions, isEmpty);
+    terms.dispose();
+  });
+
   testWidgets('a terminal this phone opens is one tab even when the Mac announces it first', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final link = FakeLink({

@@ -428,7 +428,8 @@ func (s *Session) sendJSON(v any) {
 // laptop opened, or one that ended), so each lists it without reconnecting.
 func (a *Agent) termsChanged() { a.broadcast(map[string]any{"ev": "terms"}) }
 
-// termEvent tells every phone about one terminal: term.size, term.seen.
+// termEvent tells every phone about one terminal: term.size, term.seen,
+// term.closed.
 func (a *Agent) termEvent(ev string, p map[string]any) {
 	a.broadcast(map[string]any{"ev": ev, "p": p})
 }

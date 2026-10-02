@@ -19,4 +19,7 @@ Traps:
   (chat_screen.dart) shows the terminal's screen live instead.
 - `chat.handoff` may be unknown on an older agent; an older `chat.stop`
   quits only Claude.
+- Links: `chat_links.dart` asks a link's tap recognizer for its address
+  (the markdown package only says on a tap), so the menu and onTapLink
+  share one `chatLinks`.
 - Old messages load by offset (`chat.older`); keep scroll position stable.

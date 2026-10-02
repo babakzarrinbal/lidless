@@ -47,6 +47,9 @@ class Terms extends ChangeNotifier {
   int _epoch = 0, _synced = -1; // the link's connection; the one last synced
   bool _syncing = false;
   late final StreamSubscription _sub;
+  // Closed here or elsewhere: listed by the Mac for a few seconds more (while
+  // Claude saves), but never adopted again.
+  final _closed = <int>{};
 
   /// Sessions in the order they were started.
   List<Session> get sessions {
@@ -209,9 +212,20 @@ class Terms extends ChangeNotifier {
     for (final m in list) {
       final id = (m['id'] as num).toInt();
       final session = m['session'] as String? ?? '';
-      if (known.contains(id) || session.isEmpty) continue; // not one of ours
-      final t = _make(id, m['title'] as String? ?? '',
-          kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? '');
+      if (session.isEmpty || _closed.contains(id)) continue; // not one of ours, or going
+      // Renamed on some device: the Mac's name wins over the one the
+      // program set (an escape code), until the Mac's changes again.
+      final title = m['title'] as String? ?? '';
+      if (known.contains(id)) {
+        final t = tabs.firstWhere((t) => t.id == id);
+        if (title.isNotEmpty && title != t.macTitle) {
+          if (t.macTitle != null) t.title = title;
+          t.macTitle = title;
+        }
+        continue;
+      }
+      final t = _make(id, title,
+          kind: m['kind'] as String? ?? 'shell', session: session, dir: m['dir'] as String? ?? '')..macTitle = title;
       // Read up to where the phone last showed it; one never shown is read.
       final end = (m['end'] as num?)?.toInt() ?? 0;
       t.readTo = min((read['$id'] as num?)?.toInt() ?? end, end);
@@ -522,12 +536,19 @@ class Terms extends ChangeNotifier {
   /// that Claude had open, if any.
   Future<String?> close(TermTab t) async {
     String? conv;
+    _closed.add(t.id);
     if (!t.exited) {
       try {
         final r = await link.call('term.close', {'id': t.id});
         if (r is Map && (r['conversation'] as String? ?? '').isNotEmpty) conv = r['conversation'] as String;
       } catch (_) {}
     }
+    _drop(t);
+    return conv;
+  }
+
+  /// Takes [t] off this device, closed here or on another one.
+  void _drop(TermTab t) {
     link.termOut.remove(t.id);
     t.settle?.cancel();
     final s = session(t.session);
@@ -535,8 +556,8 @@ class Terms extends ChangeNotifier {
     tabs.remove(t);
     final a = _activeShell[t.session];
     if (i >= 0 && a != null && a >= i && a > 0) _activeShell[t.session] = a - 1;
+    if (!tabs.any((x) => x.session == t.session)) _activeShell.remove(t.session);
     notifyListeners();
-    return conv;
   }
 
   /// Starts a parked Claude again. [take] quits a Claude that opened the
@@ -558,6 +579,13 @@ class Terms extends ChangeNotifier {
   void _onEvent((String, dynamic) e) {
     if (e.$1 == 'terms') {
       _refresh();
+      return;
+    }
+    if (e.$1 == 'term.closed') {
+      final id = ((e.$2 as Map)['id'] as num).toInt();
+      _closed.add(id);
+      final t = tabs.where((t) => t.id == id).firstOrNull;
+      if (t != null) _drop(t);
       return;
     }
     if (e.$1 == 'term.size' || e.$1 == 'term.seen') {

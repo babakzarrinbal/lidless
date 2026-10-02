@@ -134,7 +134,9 @@ parked. Parked state lives only in the agent's memory.
   timeouts, `termOut` callbacks per terminal id, the `events` stream.
 - `lib/features/terminals/terms.dart`: `_sync` after every (re)connect adopts the Mac's
   list and resumes each tab from its offset. `_refresh` on `terms` events
-  adopts only new terminals and marks gone ones ended. `open()` keeps one tab
+  adopts only new terminals, takes renames, and marks gone ones ended. A
+  `term.closed` event (any device called `term.close`) drops the tab on
+  every device at once. `open()` keeps one tab
   when the event beats the reply. The status dots (working / unread / read /
   closed) come from output activity and the screen (`LiveScreen`), and the
   read offsets are saved per Mac.

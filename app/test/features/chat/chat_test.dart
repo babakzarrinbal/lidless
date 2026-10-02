@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uniai/features/terminals/term_tab.dart';
 import 'package:uniai/crypto/noise.dart';
@@ -7,6 +10,8 @@ import 'package:uniai/features/terminals/terms.dart';
 import 'package:uniai/net/link.dart';
 import 'package:uniai/net/store.dart';
 import 'package:uniai/features/chat/chat_view.dart';
+import 'package:uniai/features/chat/chat_links.dart' as links;
+import 'package:uniai/features/chat/chat_messages.dart';
 import 'package:uniai/features/chat/chat_screen.dart';
 import 'package:xterm/xterm.dart';
 
@@ -24,6 +29,7 @@ const _first = {
 };
 
 void main() {
+  linksTests();
   test('results attach to their tool call; a new transcript starts over', () {
     final log = ChatLog()..apply(_first);
     expect(log.items.map((e) => e.kind), ['user', 'text', 'tool']);
@@ -203,4 +209,67 @@ class _Pages extends FakeLink {
     before.add(params!['before'] as int);
     return pages.removeAt(0);
   }
+}
+
+void linksTests() {
+  testWidgets('a link opens on a tap; a long press offers open, copy link, copy text', (tester) async {
+    final opened = <Uri>[];
+    links.launch = (u) async {
+      opened.add(u);
+      return true;
+    };
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+      return null;
+    });
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(body: ChatAnswer('[the docs](https://example.com/docs) say so, and so does https://x.org'))));
+    final at = tester.getTopLeft(find.byType(SelectableText).first) + const Offset(12, 10);
+    await tester.tapAt(at);
+    await tester.pumpAndSettle();
+    expect(opened, [Uri.parse('https://example.com/docs')]);
+
+    await tester.longPressAt(at);
+    await tester.pumpAndSettle();
+    expect(find.text('Open link'), findsOneWidget);
+    await tester.tap(find.text('Copy link'));
+    await tester.pumpAndSettle();
+    expect(copied, 'https://example.com/docs');
+    await tester.longPressAt(at);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy text'));
+    await tester.pumpAndSettle();
+    expect(copied, 'the docs');
+    await tester.longPressAt(at);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open link'));
+    await tester.pumpAndSettle();
+    expect(opened, hasLength(2));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5)); // the toasts
+  });
+
+  testWidgets('on a Mac a right click on a link offers the same', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final opened = <Uri>[];
+      links.launch = (u) async {
+        opened.add(u);
+        return true;
+      };
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ChatAnswer('[the docs](https://example.com/docs) say so'))));
+      final at = tester.getTopLeft(find.byType(SelectableText).first) + const Offset(12, 10);
+      await tester.tapAt(at, buttons: kSecondaryButton, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(find.text('Copy link'), findsOneWidget);
+      await tester.tap(find.text('Open link'));
+      await tester.pumpAndSettle();
+      expect(opened, [Uri.parse('https://example.com/docs')]);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 5));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }
