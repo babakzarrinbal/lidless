@@ -8,6 +8,7 @@ import 'package:uniai/app/theme.dart';
 import 'package:uniai/features/chat/claude.dart' show Conversation;
 import 'package:uniai/features/terminals/session.dart';
 import 'package:uniai/features/workspaces/folder_menu.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/net/link.dart';
 
@@ -18,6 +19,7 @@ class HomeRecent extends StatelessWidget {
     required this.prefs,
     required this.mac,
     required this.all,
+    required this.pins,
     required this.onNew,
     required this.onResume,
     required this.onRemoveDir,
@@ -26,6 +28,7 @@ class HomeRecent extends StatelessWidget {
   final SharedPreferences? prefs;
   final String mac;
   final List<Session> all; // the sessions open on the Mac
+  final Pins pins;
   final void Function({String? dir}) onNew;
   final Future<void> Function(String dir, Conversation c, {String? flagsOf}) onResume;
   final void Function(String dir) onRemoveDir;
@@ -64,6 +67,7 @@ class HomeRecent extends StatelessWidget {
               prefs: prefs,
               mac: mac,
               sessions: all,
+              pins: pins,
               onResume: onResume,
             ),
             if (recent.isNotEmpty) ...[

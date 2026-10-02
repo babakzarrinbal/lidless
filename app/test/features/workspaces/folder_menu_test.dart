@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/workspaces.dart';
 
@@ -30,6 +31,7 @@ void main() {
           prefs: prefs,
           mac: 'm',
           sessions: const [],
+          pins: Pins('m', prefs: prefs),
           dirs: const ['/Users/me/proj'],
           tile: (s) => Text(s.id),
           onNew: (_) {},

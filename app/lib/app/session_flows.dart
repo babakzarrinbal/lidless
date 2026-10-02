@@ -14,12 +14,14 @@ import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/net/link.dart';
 
 class SessionFlows {
-  SessionFlows(this.state, this.terms, {required this.prefs, required this.select, required this.closeDrawer});
+  SessionFlows(this.state, this.terms,
+      {required this.prefs, required this.select, required this.closeDrawer, this.onResumed});
   final State state; // the Home that shows the dialogs
   final Terms terms;
   final SharedPreferences? Function() prefs; // loaded after the first frame
   final void Function(String id) select;
   final VoidCallback closeDrawer;
+  final void Function(Conversation c, String session)? onResumed; // a pinned one stays pinned
 
   Link get link => terms.link;
 
@@ -90,6 +92,7 @@ class SessionFlows {
     try {
       final id = await terms.start(dir, flags, tool: c.tool);
       await prefs()?.setString('sessFlags.$id', flags);
+      onResumed?.call(c, id);
       if (state.mounted) select(id);
     } on RpcError catch (e) {
       if (state.mounted) toast(state.context, e.message, error: true);

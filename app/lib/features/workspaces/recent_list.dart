@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/workspaces.dart';
 import 'package:uniai/features/workspaces/seen_conversations.dart';
 import 'package:uniai/features/workspaces/status_dot.dart';
@@ -21,6 +22,7 @@ class RecentList extends StatefulWidget {
     required this.prefs,
     required this.mac,
     required this.sessions,
+    required this.pins,
     required this.onResume,
     this.load,
   });
@@ -28,6 +30,7 @@ class RecentList extends StatefulWidget {
   final SharedPreferences? prefs;
   final String mac;
   final List<Session> sessions;
+  final Pins pins;
   final void Function(String dir, Conversation c) onResume;
   final Future<List<Conversation>> Function()? load; // tests: instead of asking the Mac
 
@@ -85,6 +88,7 @@ class _RecentListState extends State<RecentList> {
       if (!mounted) return;
       debugPrint('uniai: recent ${list.length} (epoch $epoch)');
       _seen.listed(list, openTerms(widget.sessions));
+      widget.pins.learn(list, widget.sessions);
       _failed = false;
       _tries = 0;
       _epoch = epoch;
@@ -123,8 +127,12 @@ class _RecentListState extends State<RecentList> {
         ]),
       );
     }
-    // Live terminals first; the rest newest first, older than today folded.
-    final (active, rest) = Conversation.ordered(list, openTerms(widget.sessions));
+    // Pinned first, then live terminals; the rest newest first, older than
+    // today folded.
+    final pinned = list.where((c) => widget.pins.conversation(c, widget.sessions)).toList()
+      ..sort((a, b) => b.mtime.compareTo(a.mtime));
+    final (active, rest) =
+        Conversation.ordered(list.where((c) => !pinned.contains(c)).toList(), openTerms(widget.sessions));
     final midnight = DateUtils.dateOnly(DateTime.now());
     final today = rest.where((c) => !c.mtime.isBefore(midnight)).toList();
     final old = rest.where((c) => c.mtime.isBefore(midnight)).toList();
@@ -144,6 +152,8 @@ class _RecentListState extends State<RecentList> {
         Text('Couldn\'t load them: $_error', style: const TextStyle(color: C.red))
       else if (list.isEmpty)
         const Text('No conversations in the shared folders yet.', style: TextStyle(color: C.dim)),
+      for (final c in pinned) _tile(c),
+      if (pinned.isNotEmpty && (active.isNotEmpty || today.isNotEmpty)) const Divider(height: 12),
       for (final c in active) _tile(c),
       if (active.isNotEmpty && today.isNotEmpty) const Divider(height: 12),
       for (final c in today) _tile(c),
@@ -169,6 +179,15 @@ class _RecentListState extends State<RecentList> {
     ]);
   }
 
+  Future<void> _menu(Conversation c) async {
+    final pinned = widget.pins.conversation(c, widget.sessions);
+    if (await pinMenu(context, title: c.title.isEmpty ? '(untitled)' : c.title, pinned: pinned) == 'pin') {
+      // Open here: the session is pinned too, so the drawer shows it on top.
+      final s = widget.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
+      widget.pins.toggle(s: s, c: c);
+    }
+  }
+
   Widget _tile(Conversation c) {
     final open = openTerms(widget.sessions).contains(c.term);
     return InkWell(
@@ -176,6 +195,8 @@ class _RecentListState extends State<RecentList> {
         _seen.read(c);
         widget.onResume(c.dir, c);
       },
+      onLongPress: () => _menu(c),
+      onSecondaryTap: () => _menu(c),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(children: [
@@ -196,6 +217,7 @@ class _RecentListState extends State<RecentList> {
               ),
             ]),
           ),
+          if (widget.pins.conversation(c, widget.sessions)) pinMark,
           const SizedBox(width: 8),
           Text(agoText(c.mtime), style: const TextStyle(fontSize: 11.5, color: C.dim)),
         ]),

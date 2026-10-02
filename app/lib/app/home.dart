@@ -15,6 +15,7 @@ import 'package:uniai/net/store.dart';
 import 'package:uniai/features/devices/macs.dart';
 import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/app/session_view.dart';
 import 'package:uniai/app/home_bar.dart';
 import 'package:uniai/app/home_drawer.dart';
@@ -58,8 +59,12 @@ class _HomeState extends State<Home> {
   bool _recent = true; // the recent sessions page; the app opens on it
   double _font = 13;
   SharedPreferences? _prefs;
+  late final _pins = Pins(_mac); // this device's, for this Mac
   late final _flows = SessionFlows(this, widget.terms,
-      prefs: () => _prefs, select: _select, closeDrawer: () => _scaffold.currentState?.closeDrawer());
+      prefs: () => _prefs,
+      select: _select,
+      closeDrawer: () => _scaffold.currentState?.closeDrawer(),
+      onResumed: _pins.resumed);
 
   Link get link => widget.link;
   Terms get terms => widget.terms;
@@ -144,6 +149,7 @@ class _HomeState extends State<Home> {
     _taps?.cancel();
     terms.removeListener(_openOnly);
     if (terms.onWake == _wake) terms.onWake = null;
+    _pins.dispose();
     for (final f in _files.values) {
       f.dispose();
     }
@@ -171,6 +177,7 @@ class _HomeState extends State<Home> {
 
   /// Drops the files controllers of sessions that are gone.
   void _prune(List<Session> all) {
+    if (terms.synced) WidgetsBinding.instance.addPostFrameCallback((_) => _pins.prune(terms.sessions));
     final ids = {for (final s in all) s.id};
     final gone = _files.keys.where((id) => !ids.contains(id)).toList();
     if (gone.isEmpty) return;
@@ -225,7 +232,7 @@ class _HomeState extends State<Home> {
         if (!didPop) _back();
       },
       child: ListenableBuilder(
-        listenable: Listenable.merge([link, terms]),
+        listenable: Listenable.merge([link, terms, _pins]),
         builder: (context, _) {
           final all = terms.sessions;
           _prune(all);
@@ -236,6 +243,7 @@ class _HomeState extends State<Home> {
             drawer: HomeDrawer(
               link: link,
               terms: terms,
+              pins: _pins,
               macs: widget.macs,
               prefs: _prefs,
               mac: _mac,
@@ -289,6 +297,7 @@ class _HomeState extends State<Home> {
         prefs: _prefs,
         mac: _mac,
         all: all,
+        pins: _pins,
         onNew: _newSession,
         onResume: _flows.resumeIn,
         onRemoveDir: _forgetDir,

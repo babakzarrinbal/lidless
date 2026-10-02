@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/status_dot.dart';
 import 'package:uniai/app/logos.dart';
 import 'package:uniai/app/theme.dart';
@@ -18,6 +19,7 @@ class HomeDrawer extends StatelessWidget {
     super.key,
     required this.link,
     required this.terms,
+    required this.pins,
     required this.macs,
     required this.prefs,
     required this.mac,
@@ -38,6 +40,7 @@ class HomeDrawer extends StatelessWidget {
   });
   final Link link;
   final Terms terms;
+  final Pins pins;
   final List<MacPairing> macs;
   final SharedPreferences? prefs;
   final String mac;
@@ -89,6 +92,11 @@ class HomeDrawer extends StatelessWidget {
                 },
               ),
               const Divider(height: 20),
+              if (all.any(pins.session)) ...[
+                _section('Pinned'),
+                for (final s in all.where(pins.session)) _sessionTile(context, s, s == cur, indent: 8),
+                const SizedBox(height: 8),
+              ],
               Row(children: [
                 Expanded(child: _section('Folders on ${link.host}')),
                 IconButton(
@@ -114,13 +122,14 @@ class HomeDrawer extends StatelessWidget {
                 prefs: prefs,
                 mac: mac,
                 sessions: all,
+                pins: pins,
                 dirs: [
                   ...{
                     for (final s in all) s.dir,
                     ...?prefs?.getStringList('recentDirs:$mac'),
                   },
                 ],
-                tile: (s) => _sessionTile(s, s == cur),
+                tile: (s) => _sessionTile(context, s, s == cur),
                 onNew: (dir) => onNew(dir: dir),
                 onResume: (dir, c) => onResume(dir, c),
                 onRemove: onRemoveDir,
@@ -157,9 +166,18 @@ class HomeDrawer extends StatelessWidget {
             style: const TextStyle(color: C.dim, fontSize: 11.5, letterSpacing: .8, fontWeight: FontWeight.w600)),
       );
 
-  Widget _sessionTile(Session s, bool sel) {
+  String _title(Session s) =>
+      s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName;
+
+  Future<void> _menu(BuildContext context, Session s) async {
+    final a = await pinMenu(context, title: _title(s), pinned: pins.session(s), close: true);
+    if (a == 'pin') pins.toggle(s: s);
+    if (a == 'close') onClose(s);
+  }
+
+  Widget _sessionTile(BuildContext context, Session s, bool sel, {double indent = 30}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(30, 2, 8, 2),
+      padding: EdgeInsets.fromLTRB(indent, 2, 8, 2),
       child: Material(
         color: sel ? C.accent.withValues(alpha: .14) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
@@ -169,6 +187,8 @@ class HomeDrawer extends StatelessWidget {
             onSelect(s.id);
             closeDrawer();
           },
+          onLongPress: () => _menu(context, s),
+          onSecondaryTap: () => _menu(context, s),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
             child: Row(children: [
@@ -177,11 +197,12 @@ class HomeDrawer extends StatelessWidget {
               ToolLogo(s.tool),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(s.agent?.title.isNotEmpty == true && s.agent!.title != s.tool ? s.agent!.title : s.toolName,
+                child: Text(_title(s),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               ),
+              if (pins.session(s)) pinMark,
               IconButton(
                 tooltip: 'Close session',
                 visualDensity: VisualDensity.compact,

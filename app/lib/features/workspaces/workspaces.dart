@@ -11,6 +11,7 @@ import 'package:uniai/features/workspaces/folder_menu.dart';
 import 'package:uniai/features/workspaces/new_session.dart';
 import 'package:uniai/app/logos.dart';
 import 'package:uniai/app/theme.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/seen_conversations.dart';
 import 'package:uniai/features/workspaces/status_dot.dart';
 
@@ -24,6 +25,7 @@ class WorkspaceList extends StatefulWidget {
     required this.prefs,
     required this.mac,
     required this.sessions,
+    required this.pins,
     required this.dirs,
     required this.tile,
     required this.onNew,
@@ -35,6 +37,7 @@ class WorkspaceList extends StatefulWidget {
   final SharedPreferences? prefs;
   final String mac;
   final List<Session> sessions;
+  final Pins pins; // pinned sessions show above the folders; pinned conversations first in theirs
   final List<String> dirs; // the open sessions' folders first, then recent ones
   final Widget Function(Session) tile;
   final void Function(String dir) onNew;
@@ -94,6 +97,7 @@ class _WorkspaceListState extends State<WorkspaceList> {
       final list = await (load ?? (d) => Conversation.list(widget.link, d))(dir);
       if (!mounted) return;
       _seen.listed(list, _openTerms());
+      widget.pins.learn(list, widget.sessions);
       setState(() => _convs[dir] = list);
     } catch (_) {
       // An older agent, the folder is gone, or the link just came up: the
@@ -124,16 +128,20 @@ class _WorkspaceListState extends State<WorkspaceList> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final dir in widget.dirs) ...() {
         final here = widget.sessions.where((s) => s.dir == dir).toList();
+        final pins = widget.pins;
         final convs = [for (final c in _convs[dir] ?? const <Conversation>[]) if (!open.contains(c.term)) c];
+        final pinned = convs.where((c) => pins.conversation(c, widget.sessions)).toList();
+        convs.removeWhere(pinned.contains);
         final today = convs.where((c) => !c.mtime.isBefore(midnight)).toList();
         final old = convs.where((c) => c.mtime.isBefore(midnight)).toList();
         final shut = _shut.contains(dir);
         final unread = here.any((s) => s.activity == Activity.unread) ||
             convs.any((c) => _activity(c) == Activity.unread);
         return [
-          _header(dir, shut: shut, count: here.length + today.length, unread: shut && unread, open: here.length),
+          _header(dir, shut: shut, count: here.length + pinned.length + today.length, unread: shut && unread, open: here.length),
           if (!shut) ...[
-            for (final s in here) widget.tile(s),
+            for (final s in here.where((s) => !pins.session(s))) widget.tile(s),
+            for (final c in pinned) _convTile(dir, c),
             for (final c in today) _convTile(dir, c),
             if (old.isNotEmpty) ...[
               _oldRow(dir, old),
@@ -203,8 +211,17 @@ class _WorkspaceListState extends State<WorkspaceList> {
     );
   }
 
+  Future<void> _convMenu(Conversation c) async {
+    final pinned = widget.pins.conversation(c, widget.sessions);
+    if (await pinMenu(context, title: c.title.isEmpty ? '(untitled)' : c.title, pinned: pinned) == 'pin') {
+      widget.pins.toggle(c: c);
+    }
+  }
+
   Widget _convTile(String dir, Conversation c) => InkWell(
         onTap: () => _resume(dir, c), // offline, starting it says so
+        onLongPress: () => _convMenu(c),
+        onSecondaryTap: () => _convMenu(c),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(46, 7, 16, 7),
           child: Row(children: [
@@ -216,6 +233,7 @@ class _WorkspaceListState extends State<WorkspaceList> {
               child: Text(c.title.isEmpty ? '(untitled)' : c.title,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
             ),
+            if (widget.pins.conversation(c, widget.sessions)) pinMark,
             const SizedBox(width: 8),
             Text(agoText(c.mtime), style: const TextStyle(fontSize: 11, color: C.dim)),
           ]),

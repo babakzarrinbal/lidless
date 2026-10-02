@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uniai/features/workspaces/pins.dart';
 import 'package:uniai/features/workspaces/seen_conversations.dart';
 import 'package:uniai/features/workspaces/recent_list.dart';
 import 'package:uniai/features/workspaces/status_dot.dart';
@@ -199,6 +200,7 @@ void main() {
             prefs: prefs,
             mac: 'm',
             sessions: const [],
+            pins: Pins('m', prefs: prefs),
             onResume: (d, c) => (dir, resumed) = (d, c),
             load: () async => [
               Conversation.from({'id': 'a', 'title': 'Relay fix', 'mtime': now, 'dir': '/w/relay', 'running': true}),
@@ -263,6 +265,7 @@ void main() {
                 prefs: prefs,
                 mac: 'm',
                 sessions: const [],
+                pins: Pins('m', prefs: prefs),
                 dirs: const ['/Users/x/proj'],
                 tile: (s) => Text(s.id),
                 onNew: (_) {},
