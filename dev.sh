@@ -314,13 +314,17 @@ cmd_apk() {
 MAC_APP=app/build/macos/Build/Products/Release/bz-uniai.app
 # The app carries its core (Contents/MacOS/uniai) and installs it as this
 # user's LaunchAgent when it finds none running. Adding a file breaks the
-# bundle's signature, so it is signed again (ad hoc, entitlements kept).
+# bundle's signature, so it is signed again, entitlements kept. With an Apple
+# Development identity the keychain sees the same app on every build and asks
+# for access once; signed ad hoc (no identity) it asks after every build.
 cmd_mac-app() {
   cmd_agent >/dev/null || { echo "FAIL agent-build (log: $LOGS/agent-build.log)"; return 1; }
   (cd app && quiet mac-app flutter build macos --release) || return 1
   cp bin/uniai "$MAC_APP/Contents/MacOS/uniai"
-  codesign -f -s - "$MAC_APP/Contents/MacOS/uniai" 2>/dev/null
-  quiet mac-sign codesign -f -s - --preserve-metadata=entitlements,requirements,flags "$MAC_APP"
+  local id; id=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 -o '"Apple Development[^"]*"' | tr -d '"')
+  [ -n "$id" ] || { id=-; echo "no Apple Development identity: signing ad hoc (the keychain asks after every build)"; }
+  codesign -f -s "$id" "$MAC_APP/Contents/MacOS/uniai" 2>/dev/null
+  quiet mac-sign codesign -f -s "$id" --preserve-metadata=entitlements,flags "$MAC_APP"
   du -sh "$MAC_APP" | awk '{print "bz-uniai.app", $1, "(core inside)"}'
 }
 cmd_mac-run() { cmd_mac-app; open "$MAC_APP"; }
