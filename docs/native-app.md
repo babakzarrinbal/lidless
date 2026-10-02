@@ -14,11 +14,38 @@ Decided 2026-10-02:
 - **The core is a daemon, bundled with the app.** On a Mac the `.app` carries
   the core binary and registers it as a login item (SMAppService). Quitting
   the app keeps sessions running and reachable from other devices, just as
-  holders outlive the agent today. Not on the Mac App Store (the sandbox
-  forbids spawning shells and reading `~/.claude`): a notarized DMG or a brew
-  cask.
+  holders outlive the agent today.
 - **This repo, restructured step by step.** Brew users and running holders
   keep working throughout.
+- **Public, one app that bundles everything; no brew** (brew stays only until
+  the app replaces it on our own Macs). The app installs and updates the core
+  itself, and offers the `edith`-style command line the way VS Code offers
+  `code` (a menu item that links it into the PATH).
+- **Working name: Edith.** "Edith" alone collides in the stores (MWM's photo
+  editor on the App Store, an AI life assistant): the store title needs a
+  subtitle, and the trademark is still to check.
+
+## Shipping it publicly
+
+| Platform | Channel | Role | Why |
+|---|---|---|---|
+| macOS | Developer ID signed, notarized DMG from the site; Sparkle updates | master + client | The Mac App Store sandbox forbids spawning shells and reading `~/.claude`. A client-only App Store build is possible later. |
+| Android | Play Store (client); master later | client first | Play and Android 10+ forbid running binaries downloaded into app storage (why Termux left Play). A core shipped inside the APK as a native lib may run; Claude/Copilot need Node, which hits that rule. |
+| iOS | App Store | client | No processes on iOS. |
+| Windows | signed installer (MSIX or Inno), winget later | master + client | |
+| Linux | AppImage / .deb, Flatpak later | master + client | |
+
+- **The AI CLIs are not bundled.** Claude Code and the Copilot CLI are the
+  user's own installs, under their own licences and logins. The app finds
+  them, offers the official installer when one is missing, and reads the
+  user's own usage.
+- **Accounts:** Apple Developer Program (Developer ID, notarization, App
+  Store), Google Play developer account.
+- **The relay** becomes a public service: real TLS certificates instead of a
+  pinned self-signed one, per-room abuse limits, and a self-host option
+  (the setting stays). End-to-end Noise means it still never sees plaintext.
+  Devices on the same network should talk directly, with the relay as the
+  fallback.
 
 ## The model
 
