@@ -92,7 +92,11 @@ class MacPairing {
 
 class Store {
   static const _s = FlutterSecureStorage(
-      aOptions: AndroidOptions(), iOptions: IOSOptions());
+      aOptions: AndroidOptions(),
+      iOptions: IOSOptions(),
+      // The login keychain: the data-protection one needs a team-signed app
+      // with a keychain group, and the Mac app is signed to run locally.
+      mOptions: MacOsOptions(usesDataProtectionKeychain: false));
 
   /// A fresh phone key for a new pairing (hex).
   static String newKey() => hexOf(KeyPair.generate().priv);

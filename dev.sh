@@ -20,6 +20,7 @@
 #   ./dev.sh app-test              flutter test
 #   ./dev.sh app-analyze           flutter analyze
 #   ./dev.sh apk                   release APK
+#   ./dev.sh mac-app | mac-run     the Mac app (Flutter macos target), build | build + open
 #   ./dev.sh install               release APK → the Samsung (ANDROID_SERIAL overrides)
 #   ./dev.sh run                   install + launch + follow logs
 #   ./dev.sh pair-adb              send a fresh pairing link to the phone over adb
@@ -277,6 +278,13 @@ cmd_apk() {
   (cd app && quiet apk flutter build apk --release --target-platform android-arm64)
   ls -la app/build/app/outputs/flutter-apk/app-release.apk | awk '{print "app-release.apk", $5, "bytes"}'
 }
+
+MAC_APP=app/build/macos/Build/Products/Release/macremote.app
+cmd_mac-app() {
+  (cd app && quiet mac-app flutter build macos --release)
+  du -sh "$MAC_APP" | awk '{print "macremote.app", $1}'
+}
+cmd_mac-run() { cmd_mac-app; open "$MAC_APP"; }
 
 cmd_install() {
   need_phone
