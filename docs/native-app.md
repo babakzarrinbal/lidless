@@ -1,6 +1,6 @@
-# Lidless everywhere: the native app plan
+# Babzi everywhere: the native app plan
 
-Where Lidless is going: one native app on Mac, Android, iOS, Windows and
+Where Babzi is going: one native app on Mac, Android, iOS, Windows and
 Linux. Every device that can host AI sessions is the **master** of its own
 sessions, and a **client** of every device it is paired with. How the current
 system works: [architecture.md](architecture.md).
@@ -19,11 +19,14 @@ Decided 2026-10-02:
   keep working throughout.
 - **Public, one app that bundles everything; no brew** (brew stays only until
   the app replaces it on our own Macs). The app installs and updates the core
-  itself, and offers the `edith`-style command line the way VS Code offers
+  itself, and offers the `babzi` command line the way VS Code offers
   `code` (a menu item that links it into the PATH).
-- **Working name: Edith.** "Edith" alone collides in the stores (MWM's photo
-  editor on the App Store, an AI life assistant): the store title needs a
-  subtitle, and the trademark is still to check.
+- **Name: Babzi** ("Babzi: AI Code Anywhere" in the stores), with its page at
+  babzi.zarrinbal.org for now. No app or trademark by that name turned up;
+  babzi.com belongs to someone else. Only what users see is renamed: the
+  package `org.zarrinbal.macremote`, `~/.config/macremote`, the Noise prologue,
+  the LaunchAgent labels, the VS Code extension id (`zarrinbal.lidless`) and the
+  box's `/opt/lidless` keep their names, so pairings and installs survive.
 
 ## Shipping it publicly
 

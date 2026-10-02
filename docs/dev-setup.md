@@ -1,4 +1,4 @@
-# Setting up a Mac to work on Lidless
+# Setting up a Mac to work on Babzi
 
 Clone the repo, install the toolchain, copy three untracked files over, then
 check with `./dev.sh doctor`.

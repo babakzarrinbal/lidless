@@ -1,4 +1,4 @@
-# How Lidless (Mac Remote) works
+# How Babzi works
 
 The whole system in one page: what runs where, how a terminal is shared by
 every device, and the traps. Product overview: [README.md](../README.md).

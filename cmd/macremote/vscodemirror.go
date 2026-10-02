@@ -4,7 +4,7 @@ package main
 // <id>.md, so a shared terminal whose command holds that path carries on
 // chat <id>. Two things follow from it:
 //
-//   - links.json (next to the handoffs) lists those terminals; the Lidless
+//   - links.json (next to the handoffs) lists those terminals; the Babzi
 //     extension (vscode-ext/, installed into VS Code by the agent) opens each
 //     one in the window that has its folder, live and typed into there.
 //   - Each turn in the terminal (the prompt, then the answer with its tools in
@@ -461,7 +461,7 @@ func vscodeCLIs() []string {
 	return out
 }
 
-// vscodeExtInstall puts this agent's Lidless extension into each VS Code that
+// vscodeExtInstall puts this agent's Babzi extension into each VS Code that
 // lacks this version of it (all of them with force), and says what it did.
 func vscodeExtInstall(force bool) (string, error) {
 	vsix, full, err := vscodeExtVSIX()

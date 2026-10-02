@@ -14,7 +14,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 // FragmentActivity: local_auth needs it for the biometric prompt.
-// The "lidless/notify" channel: notifications for sessions that need the
+// The "babzi/notify" channel: notifications for sessions that need the
 // user, and the foreground service that keeps the app alive while agents work.
 class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
@@ -26,7 +26,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(engine)
         initial = intent?.getStringExtra(EXTRA)
         channels(this)
-        channel = MethodChannel(engine.dartExecutor.binaryMessenger, "lidless/notify").apply {
+        channel = MethodChannel(engine.dartExecutor.binaryMessenger, "babzi/notify").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initial" -> {
@@ -102,7 +102,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     companion object {
-        const val EXTRA = "lidless_session"
+        const val EXTRA = "babzi_session"
         const val UNREAD = "unread"
         const val WATCH = "watch"
 

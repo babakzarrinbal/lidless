@@ -1,8 +1,8 @@
-# Lidless download page on the server: own port (:8462); never touches :443.
+# Babzi download page on the server: own port (:8462); never touches :443.
 services:
   site:
     image: nginx:1.29-alpine
-    container_name: lidless-site
+    container_name: babzi-site
     restart: unless-stopped
     ports:
       - "8462:8443"

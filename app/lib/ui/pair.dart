@@ -66,7 +66,7 @@ class PairScreen extends StatelessWidget {
                       child: const Icon(Icons.terminal_rounded, size: 38, color: C.accent),
                     ),
                     const Text(
-                      'Lidless',
+                      'Babzi',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
                     ),

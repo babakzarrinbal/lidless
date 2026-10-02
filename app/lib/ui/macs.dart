@@ -175,7 +175,7 @@ class _MacsPageState extends State<MacsPage> {
     if (_shellsBusy) {
       sub = 'Asking the Mac…';
     } else if (_shellsOld) {
-      sub = 'Update Lidless on the Mac to choose (brew upgrade macremote, then brew services restart macremote)';
+      sub = 'Update Babzi on the Mac to choose (brew upgrade macremote, then brew services restart macremote)';
     } else if (i == null) {
       sub = 'Couldn\'t ask the Mac · tap to retry';
       tap = _loadShells;

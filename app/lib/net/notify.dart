@@ -6,7 +6,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 class Notify {
-  static const _ch = MethodChannel('lidless/notify');
+  static const _ch = MethodChannel('babzi/notify');
   static final _taps = StreamController<String>.broadcast();
   static bool _init = false;
 

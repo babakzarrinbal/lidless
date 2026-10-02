@@ -13,8 +13,8 @@
 #   ./dev.sh brew-publish [version] build, then a GitHub release + the formula in the tap ($BREW_OWNER/homebrew-macremote, via gh)
 #   ./dev.sh relay-deploy          build + (re)start the relay on the server (:8460)
 #   ./dev.sh relay-pin             print the relay certificate pin
-#   ./dev.sh site-build            build/site: the Lidless page + the release APK
-#   ./dev.sh site-deploy           build it, serve it on the box (:8462) → https://lidless.zarrinbal.org
+#   ./dev.sh site-build            build/site: the Babzi page + the release APK
+#   ./dev.sh site-deploy           build it, serve it on the box (:8462) → https://babzi.zarrinbal.org
 #   ./dev.sh site-dns              once: Cloudflare A record + Origin Rule for that page
 #   ./dev.sh vectors               regenerate app/test/noise_vectors.json
 #   ./dev.sh app-test              flutter test
@@ -216,14 +216,14 @@ cmd_relay-deploy() {
   ssh "$BOX" 'cd /opt/macremote && docker compose up -d --build 2>&1 | tail -3 && sleep 2 && docker logs --tail 3 macremote-relay'
 }
 
-# The Lidless page (site/) + the release APK, served by nginx on the box's
+# The Babzi page (site/) + the release APK, served by nginx on the box's
 # :8462 behind Cloudflare at https://$SITE. Placeholders come from the APK.
-SITE=lidless.zarrinbal.org
+SITE=babzi.zarrinbal.org
 SITE_PORT=8462
 cmd_site-build() {
   local apk=app/build/app/outputs/flutter-apk/app-release.apk out=build/site
   [ -f "$apk" ] || cmd_apk
-  rm -rf "$out" && mkdir -p "$out" && cp site/* "$out/" && cp "$apk" "$out/lidless.apk"
+  rm -rf "$out" && mkdir -p "$out" && cp site/* "$out/" && cp "$apk" "$out/babzi.apk"
   RELAY_HOST=$RELAY_HOST python3 - "$out/index.html" "$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)" \
     "$(awk '{printf "%.0f", $1/1048576}' <<<"$(stat -f%z "$apk")")" "$(shasum -a 256 "$apk" | cut -d' ' -f1)" <<'PY'
 import os, sys
@@ -244,10 +244,10 @@ cmd_site-deploy() { # never touches :443
   cmd_site-build
   ssh "$BOX" 'mkdir -p /opt/lidless/www /opt/lidless/tls && cd /opt/lidless/tls && [ -f cert.pem ] ||
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
-      -subj "/CN=lidless" -keyout key.pem -out cert.pem 2>/dev/null; chmod 644 /opt/lidless/tls/*.pem'
+      -subj "/CN=babzi" -keyout key.pem -out cert.pem 2>/dev/null; chmod 644 /opt/lidless/tls/*.pem'
   scp -q deploy/site/compose.yml deploy/site/nginx.conf "$BOX":/opt/lidless/
   rsync -az --delete build/site/ "$BOX":/opt/lidless/www/
-  ssh "$BOX" "cd /opt/lidless && docker compose up -d 2>&1 | tail -1 && docker exec lidless-site nginx -s reload 2>/dev/null; sleep 1; curl -sk -o /dev/null -w 'origin :$SITE_PORT %{http_code}\n' https://127.0.0.1:$SITE_PORT/healthz"
+  ssh "$BOX" "cd /opt/lidless && docker compose up -d 2>&1 | tail -1 && docker exec babzi-site nginx -s reload 2>/dev/null; sleep 1; curl -sk -o /dev/null -w 'origin :$SITE_PORT %{http_code}\n' https://127.0.0.1:$SITE_PORT/healthz"
   curl -s -o /dev/null -w "https://$SITE %{http_code}\n" "https://$SITE/" || true
 }
 
@@ -264,7 +264,7 @@ cmd_site-dns() {
   if jq -e --arg h "$SITE" '.result.rules[]? | select(.expression | contains($h))' <<<"$rs" >/dev/null; then
     echo "origin rule: exists"
   else
-    cf -X POST "$api/zones/$zone/rulesets/$(jq -r .result.id <<<"$rs")/rules" --data "{\"action\":\"route\",\"expression\":\"(http.host eq \\\"$SITE\\\")\",\"description\":\"lidless page -> :$SITE_PORT on the server\",\"action_parameters\":{\"origin\":{\"port\":$SITE_PORT}}}" |
+    cf -X POST "$api/zones/$zone/rulesets/$(jq -r .result.id <<<"$rs")/rules" --data "{\"action\":\"route\",\"expression\":\"(http.host eq \\\"$SITE\\\")\",\"description\":\"babzi page -> :$SITE_PORT on the server\",\"action_parameters\":{\"origin\":{\"port\":$SITE_PORT}}}" |
       jq -r '"origin rule: \(.success) \(.errors|map(.message)|join(","))"'
   fi
 }
@@ -279,10 +279,10 @@ cmd_apk() {
   ls -la app/build/app/outputs/flutter-apk/app-release.apk | awk '{print "app-release.apk", $5, "bytes"}'
 }
 
-MAC_APP=app/build/macos/Build/Products/Release/macremote.app
+MAC_APP=app/build/macos/Build/Products/Release/Babzi.app
 cmd_mac-app() {
   (cd app && quiet mac-app flutter build macos --release)
-  du -sh "$MAC_APP" | awk '{print "macremote.app", $1}'
+  du -sh "$MAC_APP" | awk '{print "Babzi.app", $1}'
 }
 cmd_mac-run() { cmd_mac-app; open "$MAC_APP"; }
 
