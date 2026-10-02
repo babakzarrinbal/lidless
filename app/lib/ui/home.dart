@@ -669,7 +669,7 @@ class _HomeState extends State<Home> {
                 label: const Text('Lock'),
               ),
             ),
-            Expanded(
+            if (!link.pairing.isLocal) Expanded(
               child: TextButton.icon(
                 style: TextButton.styleFrom(foregroundColor: C.red),
                 onPressed: _unpair,

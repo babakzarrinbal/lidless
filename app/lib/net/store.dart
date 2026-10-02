@@ -2,6 +2,7 @@
 // Noise key. They live in the Android Keystore-backed secure storage, never in
 // plain prefs.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -27,6 +28,18 @@ class MacPairing {
     this.phoneKey,
     this.nick,
   });
+
+  /// The core on this device itself: no relay, no keys, never stored.
+  factory MacPairing.local() =>
+      MacPairing(relay: '', pin: '', room: localRoom, macPub: '', host: Platform.localHostname.split('.').first);
+  static const localRoom = 'local';
+  bool get isLocal => relay.isEmpty;
+
+  /// Desktops run their own core; phones only reach others.
+  static bool get hasLocal => Platform.isMacOS;
+
+  /// The core's socket, owner-only (cmd/uniai/local.go).
+  static String get localSocket => '${Platform.environment['HOME']}/.config/uniai/core.sock';
 
   KeyPair get key => KeyPair(unhex(phoneKey!));
 
@@ -121,7 +134,7 @@ class Store {
 
   /// Adds or updates the pairing for [p]'s Mac (by room).
   static Future<void> savePairing(MacPairing p) async {
-    if (p.phoneKey == null || p.token != null) return;
+    if (p.isLocal || p.phoneKey == null || p.token != null) return;
     final l = await pairings();
     final i = l.indexWhere((x) => x.room == p.room);
     if (i >= 0) {

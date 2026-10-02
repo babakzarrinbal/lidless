@@ -301,7 +301,10 @@ class _NewSessionPageState extends State<NewSessionPage> {
 }
 
 /// Prefs keys that differ per paired Mac.
-String macKey(Link link) => link.pairing.room.substring(0, 12);
+String macKey(Link link) {
+  final r = link.pairing.room; // 'local' for this device's own core
+  return r.length > 12 ? r.substring(0, 12) : r;
+}
 
 String baseName(String p) {
   final parts = p.split('/').where((s) => s.isNotEmpty);

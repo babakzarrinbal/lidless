@@ -1,5 +1,7 @@
 // The connection to the Mac: WSS to the relay (certificate pinned), a Noise IK
-// session inside it, and a small RPC + terminal stream protocol on top.
+// session inside it, and a small RPC + terminal stream protocol on top. The
+// core on this device itself is reached over its unix socket instead, with
+// the same frames in the clear (cmd/uniai/local.go).
 // Wire format: see cmd/uniai/session.go.
 import 'dart:async';
 import 'dart:convert';
@@ -28,7 +30,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   Link(this.pairing, this.key, {this.deviceName = 'Android phone'});
 
   MacPairing pairing;
-  final KeyPair key;
+  final KeyPair? key; // null for the local core
   final String deviceName;
 
   LinkState state = LinkState.connecting;
@@ -46,6 +48,8 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
 
   WebSocket? _ws;
   CipherState? _send, _recv;
+  bool _plain = false; // the local core: frames go unencrypted
+  bool _started = false; // tried to start the bundled core once
   final _acc = BytesBuilder(copy: false);
   final _pending = <int, Completer<dynamic>>{};
   int _nextId = 1, _gen = 0, _backoff = 1;
@@ -117,16 +121,23 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
     if (_disposed) return;
     final gen = ++_gen;
     _set(LinkState.connecting, error);
+    final local = pairing.isLocal;
     WebSocket ws;
     try {
-      ws = await WebSocket.connect(
-        'wss://${pairing.relay}/v1/phone?room=${pairing.room}',
-        customClient: _client(),
-      ).timeout(const Duration(seconds: 15));
+      ws = local
+          ? await _dialLocal()
+          : await WebSocket.connect(
+              'wss://${pairing.relay}/v1/phone?room=${pairing.room}',
+              customClient: _client(),
+            ).timeout(const Duration(seconds: 15));
     } on HandshakeException {
       return _fail(gen, 'The relay\'s certificate does not match the pin. '
           'Someone may be intercepting the connection.');
     } catch (e) {
+      if (local) {
+        if (!_started) _startCore();
+        return _fail(gen, 'The core on this Mac is not running yet.');
+      }
       return _fail(gen, _netErr(e));
     }
     if (_disposed || gen != _gen) {
@@ -135,7 +146,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
     }
     ws.pingInterval = const Duration(seconds: 15);
 
-    final noise = NoiseIK(s: key, remoteStatic: unhex(pairing.macPub));
+    final noise = local ? null : NoiseIK(s: key!, remoteStatic: unhex(pairing.macPub));
     final hello = {
       'v': 1,
       'name': deviceName,
@@ -155,7 +166,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
         shaken = true;
         handshakeTimer.cancel();
         try {
-          final reply = jsonDecode(utf8.decode(noise.readMessage2(m)))
+          final reply = jsonDecode(utf8.decode(noise == null ? m : noise.readMessage2(m)))
               as Map<String, dynamic>;
           if (reply['err'] != null) {
             ws.close();
@@ -180,13 +191,38 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
       onError: (_) {},
       cancelOnError: false,
     );
-    ws.add(noise.writeMessage1(utf8.encode(jsonEncode(hello))));
+    // The local core speaks first, with its welcome.
+    if (noise != null) ws.add(noise.writeMessage1(utf8.encode(jsonEncode(hello))));
   }
 
-  void _onOnline(WebSocket ws, NoiseIK n, Map<String, dynamic> reply) {
+  Future<WebSocket> _dialLocal() {
+    final sock = InternetAddress(MacPairing.localSocket, type: InternetAddressType.unix);
+    final client = HttpClient()
+      ..connectionFactory = (_, _, _) => Socket.startConnect(sock, 0);
+    return WebSocket.connect('ws://localhost/v1/local', customClient: client)
+        .timeout(const Duration(seconds: 5));
+  }
+
+  /// The app carries its core (Contents/MacOS/uniai): installing it starts it
+  /// as this user's LaunchAgent, which then outlives the app.
+  Future<void> _startCore() async {
+    _started = true;
+    final exe = '${File(Platform.resolvedExecutable).parent.path}/uniai';
+    if (!File(exe).existsSync()) return;
+    try {
+      final r = await Process.run(exe, ['install']);
+      debugPrint('uniai: core install ${r.exitCode} ${r.stderr}');
+      reconnectNow();
+    } catch (e) {
+      debugPrint('uniai: core install failed: $e');
+    }
+  }
+
+  void _onOnline(WebSocket ws, NoiseIK? n, Map<String, dynamic> reply) {
     _ws = ws;
-    _send = n.send;
-    _recv = n.recv;
+    _plain = n == null;
+    _send = n?.send;
+    _recv = n?.recv;
     _acc.clear();
     info = reply;
     _backoff = 1;
@@ -251,7 +287,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
   void _frame(WebSocket ws, List<int> ct) {
     final Uint8List pt;
     try {
-      pt = _recv!.decrypt(ct);
+      pt = _plain ? Uint8List.fromList(ct) : _recv!.decrypt(ct);
     } catch (_) {
       return _lost(ws, 'A message failed authentication; reconnecting.');
     }
@@ -289,7 +325,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
 
   bool _sendApp(Uint8List m) {
     final ws = _ws, cs = _send;
-    if (ws == null || cs == null) return false;
+    if (ws == null || (cs == null && !_plain)) return false;
     var i = 0;
     do {
       final n = (m.length - i).clamp(0, _chunkMax);
@@ -297,7 +333,7 @@ class Link extends ChangeNotifier with WidgetsBindingObserver {
       final pt = Uint8List(n + 1)
         ..[0] = more ? 1 : 0
         ..setRange(1, n + 1, m, i);
-      ws.add(cs.encrypt(pt));
+      ws.add(_plain ? pt : cs!.encrypt(pt));
       i += n;
     } while (i < m.length);
     return true;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
@@ -42,7 +43,7 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   bool _adding = false; // pairing another Mac
   Terms? _terms;
   Alerts? _alerts;
-  String _name = 'Android phone';
+  String _name = Platform.isAndroid ? 'Android phone' : Platform.localHostname.split('.').first;
   StreamSubscription? _links;
 
   static const _relockAfter = Duration(seconds: 60);
@@ -57,7 +58,8 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   Future<void> _boot() async {
     final prefs = await SharedPreferences.getInstance();
     _name = prefs.getString('deviceName') ?? _name;
-    _macs = await Store.pairings();
+    // A desktop is first of all its own Mac; pairings add the others.
+    _macs = [if (MacPairing.hasLocal) MacPairing.local(), ...await Store.pairings()];
     final active = await Store.active();
     final p = _macs.where((m) => m.room == active).firstOrNull ?? _macs.firstOrNull;
     try {
@@ -75,7 +77,7 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   }
 
   void _use(MacPairing p) {
-    final link = Link(p, p.key, deviceName: _name);
+    final link = Link(p, p.isLocal ? null : p.key, deviceName: _name);
     _link = link;
     final terms = _terms = Terms(link);
     _alerts = Alerts(link, terms);
@@ -199,6 +201,7 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   /// the next paired Mac, if any.
   Future<void> _unpair() async {
     final p = _link?.pairing;
+    if (p != null && p.isLocal) return;
     _drop();
     if (p != null) {
       await Store.forget(p);
@@ -209,6 +212,7 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   }
 
   Future<void> _rename(MacPairing p, String? nick) async {
+    if (p.isLocal) return;
     final link = _link;
     if (link != null && link.pairing.room == p.room) {
       link.rename(nick);
@@ -223,6 +227,7 @@ class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
 
   /// Forgets any paired Mac; the one on screen goes as [_unpair] does.
   Future<void> _forget(MacPairing p) async {
+    if (p.isLocal) return;
     if (_link?.pairing.room == p.room) return _unpair();
     await Store.forget(p);
     _macs = _macs.where((m) => m.room != p.room).toList();

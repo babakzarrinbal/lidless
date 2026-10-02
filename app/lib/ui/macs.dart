@@ -139,6 +139,7 @@ class _MacsPageState extends State<MacsPage> {
         leading: Icon(Icons.laptop_mac_rounded, color: cur ? C.accent : C.dim),
         title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text([
+          if (m.isLocal) 'this Mac',
           if (m.nick != null) real,
           if (cur) link.online ? 'connected' : 'this one, offline',
         ].join(' · ')),
@@ -159,8 +160,9 @@ class _MacsPageState extends State<MacsPage> {
           },
           itemBuilder: (_) => [
             if (!cur) const PopupMenuItem(value: 'open', child: Text('Open')),
-            const PopupMenuItem(value: 'rename', child: Text('Rename')),
-            const PopupMenuItem(value: 'remove', child: Text('Remove', style: TextStyle(color: C.red))),
+            // This Mac's own core is always here, under its own name.
+            if (!m.isLocal) const PopupMenuItem(value: 'rename', child: Text('Rename')),
+            if (!m.isLocal) const PopupMenuItem(value: 'remove', child: Text('Remove', style: TextStyle(color: C.red))),
           ],
         ),
       ),

@@ -280,9 +280,16 @@ cmd_apk() {
 }
 
 MAC_APP=app/build/macos/Build/Products/Release/bz-uniai.app
+# The app carries its core (Contents/MacOS/uniai) and installs it as this
+# user's LaunchAgent when it finds none running. Adding a file breaks the
+# bundle's signature, so it is signed again (ad hoc, entitlements kept).
 cmd_mac-app() {
-  (cd app && quiet mac-app flutter build macos --release)
-  du -sh "$MAC_APP" | awk '{print "bz-uniai.app", $1}'
+  cmd_agent >/dev/null || { echo "FAIL agent-build (log: $LOGS/agent-build.log)"; return 1; }
+  (cd app && quiet mac-app flutter build macos --release) || return 1
+  cp bin/uniai "$MAC_APP/Contents/MacOS/uniai"
+  codesign -f -s - "$MAC_APP/Contents/MacOS/uniai" 2>/dev/null
+  quiet mac-sign codesign -f -s - --preserve-metadata=entitlements,requirements,flags "$MAC_APP"
+  du -sh "$MAC_APP" | awk '{print "bz-uniai.app", $1, "(core inside)"}'
 }
 cmd_mac-run() { cmd_mac-app; open "$MAC_APP"; }
 
