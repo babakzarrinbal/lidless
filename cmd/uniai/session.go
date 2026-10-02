@@ -526,7 +526,7 @@ func (s *Session) pump(t *Term, from int64, stop chan struct{}) {
 			continue
 		}
 		if exited {
-			_, _, code := t.out.state()
+			_, _, code := t.out.State()
 			s.sendJSON(map[string]any{"ev": "term.exit", "p": map[string]any{"id": t.ID, "code": code}})
 			return
 		}

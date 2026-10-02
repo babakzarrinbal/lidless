@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"uniai/internal/holder"
 	"uniai/internal/transcript"
 )
 
@@ -28,7 +29,7 @@ type Term struct {
 	Dir     string
 	pid     int // the shell
 	run     string
-	out     *ring
+	out     *holder.Ring
 
 	mu       sync.Mutex
 	title    string
@@ -56,7 +57,7 @@ type TermInfo struct {
 }
 
 func (t *Term) info() TermInfo {
-	end, _, _ := t.out.state()
+	end, _, _ := t.out.State()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return TermInfo{t.ID, t.title, t.cols, t.rows, end, t.Kind, t.Session, t.Dir, t.parked != "", t.seen}
@@ -65,7 +66,7 @@ func (t *Term) info() TermInfo {
 // markSeen notes that a phone showed the output up to to; whether that is
 // news for the others.
 func (t *Term) markSeen(to int64) bool {
-	end, _, _ := t.out.state()
+	end, _, _ := t.out.State()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if to <= t.seen || to > end {
@@ -76,7 +77,7 @@ func (t *Term) markSeen(to int64) bool {
 }
 
 func (t *Term) read(from int64, max int) ([]byte, int64, bool, <-chan struct{}) {
-	return t.out.read(from, max)
+	return t.out.Read(from, max)
 }
 
 func (t *Term) frame(typ byte, p []byte) {
@@ -121,7 +122,7 @@ func (t *Term) resize(cols, rows uint16) {
 	if cols == 0 || rows == 0 {
 		return
 	}
-	t.frame('r', sizeFrame(cols, rows, 'p'))
+	t.frame('r', holder.SizeFrame(cols, rows, 'p'))
 }
 
 func (t *Term) rename(title string) {
@@ -223,7 +224,7 @@ func (m *Terms) open(shell, dir string, cols, rows uint16, kind, session, run st
 		m.spawning--
 		m.mu.Unlock()
 	}()
-	id, err := spawnHold(holdSpec{Shell: shell, Dir: dir, Kind: kind, Session: session, Run: run, Typed: typed, Cols: cols, Rows: rows})
+	id, err := holder.Spawn(holder.Spec{Shell: shell, Dir: dir, Kind: kind, Session: session, Run: run, Typed: typed, Cols: cols, Rows: rows}, logPath())
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +246,7 @@ func (m *Terms) watch() {
 }
 
 func (m *Terms) scan() {
-	for _, id := range holdIDs() {
+	for _, id := range holder.IDs() {
 		m.mu.Lock()
 		skip := m.terms[id] != nil || m.adopting[id] || m.spawning > 0
 		m.mu.Unlock()
@@ -255,8 +256,8 @@ func (m *Terms) scan() {
 		if _, err := m.adopt(id); err != nil && errors.Is(err, syscall.ECONNREFUSED) {
 			// Nobody listens: its holder was killed. A fresh one may not
 			// listen yet, so only an old file goes.
-			if st, err := os.Stat(sockPath(id)); err == nil && time.Since(st.ModTime()) > 10*time.Second {
-				os.Remove(sockPath(id))
+			if st, err := os.Stat(holder.SockPath(id)); err == nil && time.Since(st.ModTime()) > 10*time.Second {
+				os.Remove(holder.SockPath(id))
 				logf("term %d: removed a dead terminal's socket", id)
 			}
 		}
@@ -278,7 +279,7 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 		delete(m.adopting, id)
 		m.mu.Unlock()
 	}()
-	c, info, err := dialHold(id)
+	c, info, err := holder.Dial(id)
 	if err != nil {
 		return nil, err
 	}
@@ -287,9 +288,9 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 		return nil, nil
 	}
 	t := &Term{ID: id, Created: time.UnixMilli(info.Created), Kind: info.Kind, Session: info.Session, Dir: info.Dir,
-		pid: info.PID, run: info.Run, out: newRing(), title: info.Title, cols: info.Cols, rows: info.Rows,
+		pid: info.PID, run: info.Run, out: holder.NewRing(), title: info.Title, cols: info.Cols, rows: info.Rows,
 		conn: c, send: make(chan []byte, 1024)}
-	writeFrame(c, 'a', i64(0)) // everything it kept
+	holder.WriteFrame(c, 'a', holder.I64(0)) // everything it kept
 	m.mu.Lock()
 	m.terms[id] = t
 	m.mu.Unlock()
@@ -317,14 +318,14 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 		defer close(done)
 		code := -1 // gone without saying: the holder died
 		for {
-			typ, p, err := readFrame(c)
+			typ, p, err := holder.ReadFrame(c)
 			if err != nil {
 				break
 			}
 			switch typ {
 			case 'o':
 				if len(p) >= 8 {
-					t.out.write(int64(binary.BigEndian.Uint64(p)), p[8:])
+					t.out.Write(int64(binary.BigEndian.Uint64(p)), p[8:])
 				}
 			case 's':
 				if len(p) >= 4 {
@@ -334,7 +335,7 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 					t.mu.Unlock()
 					// What the program draws next is a redraw for the new
 					// size, not news: phones keep it out of their unread.
-					end, _, _ := t.out.state()
+					end, _, _ := t.out.State()
 					m.event("term.size", map[string]any{"id": id, "cols": cols, "rows": rows, "at": end})
 				}
 			case 'x':
@@ -347,7 +348,7 @@ func (m *Terms) adopt(id uint32) (*Term, error) {
 			}
 		}
 		c.Close()
-		t.out.exit(code)
+		t.out.Exit(code)
 		m.mu.Lock()
 		delete(m.terms, id)
 		m.mu.Unlock()

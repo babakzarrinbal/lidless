@@ -3,12 +3,14 @@ package main
 import (
 	"testing"
 	"time"
+
+	"uniai/internal/holder"
 )
 
 // A phone's "seen" offset only moves forward and never past the output.
 func TestMarkSeen(t *testing.T) {
-	tm := &Term{out: newRing()}
-	tm.out.write(0, make([]byte, 100))
+	tm := &Term{out: holder.NewRing()}
+	tm.out.Write(0, make([]byte, 100))
 	for _, c := range []struct {
 		to   int64
 		want bool

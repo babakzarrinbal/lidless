@@ -33,6 +33,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"uniai/internal/config"
+	"uniai/internal/holder"
 	"uniai/internal/rpc"
 	"uniai/internal/transcript"
 	"uniai/internal/ulog"
@@ -81,7 +82,7 @@ func main() {
 	case "usage":
 		usage.CmdUsage()
 	case "hold":
-		cmdHold(args)
+		holder.Run(args)
 	case "reload":
 		cmdReload()
 	case "ls":

@@ -24,6 +24,7 @@ import (
 	"golang.org/x/term"
 
 	"uniai/internal/config"
+	"uniai/internal/holder"
 	"uniai/internal/shellenv"
 	"uniai/internal/transcript"
 	"uniai/internal/usage"
@@ -32,10 +33,10 @@ import (
 const detachKey = 0x1d // Ctrl-]
 
 func cmdLs(args []string) {
-	l := holdList()
+	l := holder.List()
 	if len(args) > 0 && args[0] == "--json" { // for the VS Code extension
 		if l == nil {
-			l = []holdInfo{}
+			l = []holder.Info{}
 		}
 		json.NewEncoder(os.Stdout).Encode(l)
 		return
@@ -60,8 +61,8 @@ func cmdLs(args []string) {
 
 // cmdAttach joins a terminal: by id, by folder, or the only one there is.
 func cmdAttach(args []string) {
-	l := holdList()
-	var pick []holdInfo
+	l := holder.List()
+	var pick []holder.Info
 	switch {
 	case len(args) == 0:
 		cwd, _ := os.Getwd()
@@ -102,16 +103,16 @@ func cmdKill(args []string) {
 	if err != nil {
 		die("bad id %q", args[0])
 	}
-	c, _, err := dialHold(uint32(id))
+	c, _, err := holder.Dial(uint32(id))
 	if err != nil {
 		die("terminal %d: %v", id, err)
 	}
 	defer c.Close()
-	writeFrame(c, 'h')
+	holder.WriteFrame(c, 'h')
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
-	writeFrame(c, 'a', i64(-1))
+	holder.WriteFrame(c, 'a', holder.I64(-1))
 	for {
-		typ, _, err := readFrame(c)
+		typ, _, err := holder.ReadFrame(c)
 		if err != nil || typ == 'x' {
 			return
 		}
@@ -164,9 +165,9 @@ func cmdAgentCLI(tool string, args []string) {
 	if err != nil || cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	id, err := spawnHold(holdSpec{Shell: shell, Dir: cwd, Kind: tool, Session: config.RandHex(8), Run: run,
+	id, err := holder.Spawn(holder.Spec{Shell: shell, Dir: cwd, Kind: tool, Session: config.RandHex(8), Run: run,
 		Typed: typed + "; exit", // quitting it here ends the session everywhere
-		Cols:  uint16(cols), Rows: uint16(rows)})
+		Cols:  uint16(cols), Rows: uint16(rows)}, logPath())
 	if err != nil {
 		die("%v", err)
 	}
@@ -226,7 +227,7 @@ func newestConversation(dir string) string {
 // holderOf is the shared terminal process pid runs in (0: none).
 func holderOf(pid int) uint32 {
 	shells := map[int]uint32{}
-	for _, i := range holdList() {
+	for _, i := range holder.List() {
 		shells[i.PID] = i.ID
 	}
 	pp := transcript.Parents()
@@ -241,7 +242,7 @@ func holderOf(pid int) uint32 {
 // attachTerm shows terminal id in this window until it ends or Ctrl-] leaves
 // it; the exit status.
 func attachTerm(id uint32) int {
-	c, info, err := dialHold(id)
+	c, info, err := holder.Dial(id)
 	if err != nil {
 		die("terminal %d: %v", id, err)
 	}
@@ -261,11 +262,11 @@ func attachTerm(id uint32) int {
 	send := func(typ byte, p []byte) {
 		mu.Lock()
 		defer mu.Unlock()
-		writeFrame(c, typ, p)
+		holder.WriteFrame(c, typ, p)
 	}
 	size := func(role byte) {
 		if cols, rows, err := term.GetSize(out); err == nil && cols > 0 && rows > 0 {
-			send('r', sizeFrame(uint16(cols), uint16(rows), role))
+			send('r', holder.SizeFrame(uint16(cols), uint16(rows), role))
 		}
 	}
 	os.Stdout.WriteString("\x1b[H\x1b[2J\x1b[3J")
@@ -277,7 +278,7 @@ func attachTerm(id uint32) int {
 		from = max(0, info.End-16<<10) // no size to redraw for: the recent output
 	}
 	size('L')
-	send('a', i64(from))
+	send('a', holder.I64(from))
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
@@ -310,7 +311,7 @@ func attachTerm(id uint32) int {
 	}()
 	code := 0
 	for {
-		typ, p, err := readFrame(c)
+		typ, p, err := holder.ReadFrame(c)
 		if err != nil {
 			restore()
 			select {
