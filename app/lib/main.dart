@@ -1,4 +1,4 @@
-// App entry: loads the pairings, builds the MacRemote root and routes between pairing and Home.
+// App entry: loads the pairings, builds the Uniai root (lock, link to the Mac on screen) and routes between pairing and Home.
 import 'dart:async';
 import 'dart:io';
 
