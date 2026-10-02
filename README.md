@@ -28,7 +28,20 @@ On a Mac, install the app: `./dev.sh mac-zip` builds `build/bz-uniai-mac.zip`.
 The app carries the core and, at every start, installs it as a LaunchAgent
 (unless a newer one runs), along with the `uniai` command and the
 claude/copilot shell aliases. Built with `.server.env`, it also carries your
-relay, so phones pair from its Devices page. Without the app:
+relay, so phones pair from its Devices page. To install or update it on another
+Mac, unzip it outside /Applications first (`ditto -x -k` straight into
+/Applications fails: it can't change that folder's own permissions):
+
+```bash
+pkill -x bz-uniai
+ditto -x -k ~/Downloads/bz-uniai-mac.zip ~/Downloads/bz-uniai-new
+rm -rf /Applications/bz-uniai.app
+mv ~/Downloads/bz-uniai-new/bz-uniai.app /Applications/
+xattr -dr com.apple.quarantine /Applications/bz-uniai.app
+open /Applications/bz-uniai.app
+```
+
+Without the app:
 `brew install babakzarrinbal/uniai/uniai`, then `uniai setup your.server:8460`. To run a relay, see
 [docs/hosting.md](docs/hosting.md).
 
