@@ -390,7 +390,7 @@ func cmdServe() {
 		}
 	}
 	st, _ := os.Stat(configPath())
-	a := &Agent{cfg: c, cfgMtime: st.ModTime(), host: computerName(), terms: newTerms(), sessions: map[*Session]struct{}{}}
+	a := &Agent{cfg: c, cfgMtime: st.ModTime(), host: computerName(), terms: newTerms(), plugins: corePlugins(), sessions: map[*Session]struct{}{}}
 	a.terms.onChange = a.termsChanged
 	a.terms.onEvent = a.termEvent
 	go a.terms.watch() // adopts the terminals that outlived the last agent

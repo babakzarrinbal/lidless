@@ -8,17 +8,15 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"macremote/internal/plugin"
 )
 
 const maxEditable = 4 << 20
 
-// rpcError carries a machine-readable code to the phone.
-type rpcError struct {
-	Code string
-	Msg  string
-}
-
-func (e *rpcError) Error() string { return e.Msg }
+// rpcError carries a machine-readable code to the phone. Plugins return the
+// same type.
+type rpcError = plugin.Error
 
 // resolve turns a phone-supplied path into a real absolute path inside one of
 // the configured roots, following symlinks so a link cannot point outside.
@@ -49,7 +47,7 @@ func resolve(roots []string, p string) (string, error) {
 			return real, nil
 		}
 	}
-	return "", &rpcError{"denied", "outside the allowed folders"}
+	return "", &rpcError{Code: "denied", Msg: "outside the allowed folders"}
 }
 
 type Entry struct {
@@ -107,7 +105,7 @@ func fsRead(roots []string, path string) (map[string]any, error) {
 		return nil, err
 	}
 	if st.IsDir() {
-		return nil, &rpcError{"isdir", "that is a folder"}
+		return nil, &rpcError{Code: "isdir", Msg: "that is a folder"}
 	}
 	res := map[string]any{"path": p, "size": st.Size(), "mtime": st.ModTime().UnixNano()}
 	if st.Size() > maxEditable {
@@ -140,14 +138,14 @@ func fsWrite(roots []string, path, text string, mtime int64) (map[string]any, er
 	mode := os.FileMode(0o644)
 	if st, err := os.Stat(p); err == nil {
 		if st.IsDir() {
-			return nil, &rpcError{"isdir", "that is a folder"}
+			return nil, &rpcError{Code: "isdir", Msg: "that is a folder"}
 		}
 		if mtime != 0 && st.ModTime().UnixNano() != mtime {
-			return nil, &rpcError{"conflict", "the file changed on the Mac since you opened it"}
+			return nil, &rpcError{Code: "conflict", Msg: "the file changed on the Mac since you opened it"}
 		}
 		mode = st.Mode().Perm()
 	} else if mtime != 0 {
-		return nil, &rpcError{"conflict", "the file was deleted on the Mac"}
+		return nil, &rpcError{Code: "conflict", Msg: "the file was deleted on the Mac"}
 	}
 	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".macremote-*")
 	if err != nil {
@@ -208,7 +206,7 @@ func fsRename(roots []string, from, to string) error {
 		return err
 	}
 	if _, err := os.Lstat(b); err == nil {
-		return &rpcError{"exists", "something with that name already exists"}
+		return &rpcError{Code: "exists", Msg: "something with that name already exists"}
 	}
 	return os.Rename(a, b)
 }
@@ -242,7 +240,7 @@ func resolveEntry(roots []string, path string) (string, error) {
 	p := filepath.Join(dir, base)
 	for _, r := range roots {
 		if rr, err := filepath.EvalSymlinks(r); err == nil && rr == p {
-			return "", &rpcError{"denied", "that is a root folder"}
+			return "", &rpcError{Code: "denied", Msg: "that is a root folder"}
 		}
 	}
 	return p, nil

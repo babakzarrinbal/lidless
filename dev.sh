@@ -94,9 +94,9 @@ cmd_doctor() { # read-only; prints OK/MISSING per item, never a secret's value
 
 cmd_go-check() {
   quiet go-tidy gorun linux arm64 go mod tidy
-  quiet go-fmt gorun linux arm64 gofmt -l -w cmd
+  quiet go-fmt gorun linux arm64 gofmt -l -w cmd internal
   quiet go-vet-linux gorun linux arm64 go vet ./...
-  quiet go-vet-darwin gorun darwin arm64 go vet ./cmd/macremote
+  quiet go-vet-darwin gorun darwin arm64 go vet ./...
   quiet go-test gorun linux arm64 go test ./...
 }
 

@@ -73,7 +73,7 @@ func shellInfo(cfg *Config) map[string]any {
 // setShell makes shell (or, when empty, the login shell) the default for new terminals.
 func (a *Agent) setShell(shell string) error {
 	if shell != "" && !contains(shells(), shell) {
-		return &rpcError{"bad", "this Mac does not offer " + shell}
+		return &rpcError{Code: "bad", Msg: "this Mac does not offer " + shell}
 	}
 	a.reload() // don't write back a stale copy (a `revoke` since)
 	a.mu.Lock()

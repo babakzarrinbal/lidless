@@ -22,6 +22,8 @@ import (
 
 	"github.com/flynn/noise"
 	"github.com/gorilla/websocket"
+
+	"macremote/internal/plugin"
 )
 
 // Wire format, inside Noise transport messages:
@@ -46,6 +48,7 @@ type Agent struct {
 	cfgMtime time.Time
 	host     string
 	terms    *Terms
+	plugins  *plugin.Registry
 	sessions map[*Session]struct{}
 }
 
@@ -558,7 +561,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if t := s.a.terms.get(p.ID); t != nil {
 			return t, nil
 		}
-		return nil, &rpcError{"gone", "that terminal has ended"}
+		return nil, &rpcError{Code: "gone", Msg: "that terminal has ended"}
 	}
 	switch method {
 	case "term.list":
@@ -575,7 +578,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			dir = d
 		}
 		if len(p.Session) > 64 || len(p.Kind) > 16 || len(p.Cmd) > 4096 || strings.ContainsAny(p.Cmd, "\r\n") {
-			return nil, &rpcError{"bad", "bad terminal options"}
+			return nil, &rpcError{Code: "bad", Msg: "bad terminal options"}
 		}
 		shell := pickShell(p.Shell, s.a.config().Shell, shells())
 		t, err := s.a.terms.open(shell, dir, p.Cols, p.Rows, p.Kind, p.Session, strings.TrimSpace(p.Cmd))
@@ -750,8 +753,20 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		}
 		logf("%s set the default shell to %q", s.device, p.Shell)
 		return shellInfo(s.a.config()), nil
+	case "plugins.list":
+		return s.a.plugins.List(), nil
 	}
-	return nil, &rpcError{"unknown", "unknown method " + method}
+	if m := s.a.plugins.Lookup(method); m != nil {
+		if m.Write {
+			logf("%s %s", s.device, method)
+		}
+		return m.Call(&plugin.Ctx{
+			Device:  s.device,
+			Resolve: func(path string) (string, error) { return resolve(roots, path) },
+			Log:     logf,
+		}, raw)
+	}
+	return nil, &rpcError{Code: "unknown", Msg: "unknown method " + method}
 }
 
 func sysStatus(a *Agent) map[string]any {

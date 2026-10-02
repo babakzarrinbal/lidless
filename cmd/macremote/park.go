@@ -79,7 +79,7 @@ func (t *Term) park() (string, error) {
 		return "", nil
 	}
 	if !quitClaude(pid, 5*time.Second) {
-		return "", &rpcError{"busy", "Claude on the Mac did not quit"}
+		return "", &rpcError{Code: "busy", Msg: "Claude on the Mac did not quit"}
 	}
 	t.mu.Lock()
 	t.parked, t.parkedID = resumeCommand(t.run, sid), sid
@@ -100,7 +100,7 @@ func (t *Term) unpark(take bool) error {
 	if _, pid := claudeIn(t); pid == 0 {
 		if _, open := claudeRunning()[sid]; open {
 			if !take {
-				return &rpcError{"busy", "Claude has this conversation open somewhere else on the Mac"}
+				return &rpcError{Code: "busy", Msg: "Claude has this conversation open somewhere else on the Mac"}
 			}
 			if err := stopClaude(sid); err != nil {
 				return err
