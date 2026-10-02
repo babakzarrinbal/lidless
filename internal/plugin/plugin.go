@@ -10,15 +10,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"uniai/internal/rpc"
 )
 
 // Error carries a machine-readable code to the app ("denied", "notfound", …).
-type Error struct {
-	Code string
-	Msg  string
-}
-
-func (e *Error) Error() string { return e.Msg }
+// It is rpc.Error: one type for the core and its plugins.
+type Error = rpc.Error
 
 // Ctx is what a method gets from the core besides its parameters.
 type Ctx struct {

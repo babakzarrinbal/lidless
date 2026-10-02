@@ -1,4 +1,8 @@
-package main
+// Package fsops is the file browser's side of the core: list, read, write,
+// create, rename and delete files, always inside the roots the user chose to
+// share and never through a symlink that leads out. Overview:
+// docs/architecture.md.
+package fsops
 
 import (
 	"bytes"
@@ -9,18 +13,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"uniai/internal/plugin"
+	"uniai/internal/rpc"
 )
 
 const maxEditable = 4 << 20
 
-// rpcError carries a machine-readable code to the phone. Plugins return the
-// same type.
-type rpcError = plugin.Error
-
-// resolve turns a phone-supplied path into a real absolute path inside one of
+// Resolve turns a phone-supplied path into a real absolute path inside one of
 // the configured roots, following symlinks so a link cannot point outside.
-func resolve(roots []string, p string) (string, error) {
+func Resolve(roots []string, p string) (string, error) {
 	home, _ := os.UserHomeDir()
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		p = home + p[1:]
@@ -47,7 +47,7 @@ func resolve(roots []string, p string) (string, error) {
 			return real, nil
 		}
 	}
-	return "", &rpcError{Code: "denied", Msg: "outside the allowed folders"}
+	return "", &rpc.Error{Code: "denied", Msg: "outside the allowed folders"}
 }
 
 type Entry struct {
@@ -58,8 +58,8 @@ type Entry struct {
 	Mtime int64  `json:"mtime"` // unix ms
 }
 
-func fsList(roots []string, path string) (map[string]any, error) {
-	p, err := resolve(roots, path)
+func List(roots []string, path string) (map[string]any, error) {
+	p, err := Resolve(roots, path)
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +95,8 @@ func fsList(roots []string, path string) (map[string]any, error) {
 	return map[string]any{"path": p, "entries": out, "truncated": truncated}, nil
 }
 
-func fsRead(roots []string, path string) (map[string]any, error) {
-	p, err := resolve(roots, path)
+func Read(roots []string, path string) (map[string]any, error) {
+	p, err := Resolve(roots, path)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func fsRead(roots []string, path string) (map[string]any, error) {
 		return nil, err
 	}
 	if st.IsDir() {
-		return nil, &rpcError{Code: "isdir", Msg: "that is a folder"}
+		return nil, &rpc.Error{Code: "isdir", Msg: "that is a folder"}
 	}
 	res := map[string]any{"path": p, "size": st.Size(), "mtime": st.ModTime().UnixNano()}
 	if st.Size() > maxEditable {
@@ -128,24 +128,24 @@ func fsRead(roots []string, path string) (map[string]any, error) {
 	return res, nil
 }
 
-// fsWrite saves text atomically. A non-zero mtime must match the file on
+// Write saves text atomically. A non-zero mtime must match the file on
 // disk, so an edit never silently overwrites a change made on the Mac.
-func fsWrite(roots []string, path, text string, mtime int64) (map[string]any, error) {
-	p, err := resolve(roots, path)
+func Write(roots []string, path, text string, mtime int64) (map[string]any, error) {
+	p, err := Resolve(roots, path)
 	if err != nil {
 		return nil, err
 	}
 	mode := os.FileMode(0o644)
 	if st, err := os.Stat(p); err == nil {
 		if st.IsDir() {
-			return nil, &rpcError{Code: "isdir", Msg: "that is a folder"}
+			return nil, &rpc.Error{Code: "isdir", Msg: "that is a folder"}
 		}
 		if mtime != 0 && st.ModTime().UnixNano() != mtime {
-			return nil, &rpcError{Code: "conflict", Msg: "the file changed on the Mac since you opened it"}
+			return nil, &rpc.Error{Code: "conflict", Msg: "the file changed on the Mac since you opened it"}
 		}
 		mode = st.Mode().Perm()
 	} else if mtime != 0 {
-		return nil, &rpcError{Code: "conflict", Msg: "the file was deleted on the Mac"}
+		return nil, &rpc.Error{Code: "conflict", Msg: "the file was deleted on the Mac"}
 	}
 	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".uniai-*")
 	if err != nil {
@@ -176,16 +176,16 @@ func fsWrite(roots []string, path, text string, mtime int64) (map[string]any, er
 	return map[string]any{"path": p, "size": st.Size(), "mtime": st.ModTime().UnixNano()}, nil
 }
 
-func fsMkdir(roots []string, path string) error {
-	p, err := resolve(roots, path)
+func Mkdir(roots []string, path string) error {
+	p, err := Resolve(roots, path)
 	if err != nil {
 		return err
 	}
 	return os.Mkdir(p, 0o755)
 }
 
-func fsCreate(roots []string, path string) error {
-	p, err := resolve(roots, path)
+func Create(roots []string, path string) error {
+	p, err := Resolve(roots, path)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func fsCreate(roots []string, path string) error {
 	return f.Close()
 }
 
-func fsRename(roots []string, from, to string) error {
+func Rename(roots []string, from, to string) error {
 	a, err := resolveEntry(roots, from)
 	if err != nil {
 		return err
@@ -206,13 +206,13 @@ func fsRename(roots []string, from, to string) error {
 		return err
 	}
 	if _, err := os.Lstat(b); err == nil {
-		return &rpcError{Code: "exists", Msg: "something with that name already exists"}
+		return &rpc.Error{Code: "exists", Msg: "something with that name already exists"}
 	}
 	return os.Rename(a, b)
 }
 
-// fsDelete removes a file or an empty folder, never a whole tree.
-func fsDelete(roots []string, path string) error {
+// Delete removes a file or an empty folder, never a whole tree.
+func Delete(roots []string, path string) error {
 	p, err := resolveEntry(roots, path)
 	if err != nil {
 		return err
@@ -233,14 +233,14 @@ func resolveEntry(roots []string, path string) (string, error) {
 	if !filepath.IsAbs(clean) || base == "/" || base == "." || base == ".." {
 		return "", errors.New("bad path")
 	}
-	dir, err := resolve(roots, filepath.Dir(clean))
+	dir, err := Resolve(roots, filepath.Dir(clean))
 	if err != nil {
 		return "", err
 	}
 	p := filepath.Join(dir, base)
 	for _, r := range roots {
 		if rr, err := filepath.EvalSymlinks(r); err == nil && rr == p {
-			return "", &rpcError{Code: "denied", Msg: "that is a root folder"}
+			return "", &rpc.Error{Code: "denied", Msg: "that is a root folder"}
 		}
 	}
 	return p, nil

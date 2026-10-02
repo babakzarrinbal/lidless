@@ -23,6 +23,7 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/websocket"
 
+	"uniai/internal/fsops"
 	"uniai/internal/plugin"
 )
 
@@ -50,10 +51,6 @@ type Agent struct {
 	terms    *Terms
 	plugins  *plugin.Registry
 	sessions map[*Session]struct{}
-}
-
-func logf(format string, a ...any) {
-	fmt.Printf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, a...))
 }
 
 func computerName() string {
@@ -606,7 +603,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if dir == "" {
 			dir, _ = os.UserHomeDir()
 		} else {
-			d, err := resolve(roots, dir)
+			d, err := fsops.Resolve(roots, dir)
 			if err != nil {
 				return nil, err
 			}
@@ -703,7 +700,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		}
 		return chatOlder(t, p.Before, p.Path)
 	case "chat.sessions":
-		dir, err := resolve(roots, p.Dir)
+		dir, err := fsops.Resolve(roots, p.Dir)
 		if err != nil {
 			return nil, err
 		}
@@ -714,7 +711,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return l, err
 	case "chat.recent":
 		shared := func(dir string) bool {
-			_, err := resolve(roots, dir)
+			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		}
 		l := chatRecent(s.a.terms.all(), 40, shared)
@@ -724,7 +721,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return l, nil
 	case "chat.transcript": // a VS Code chat, read-only: {"same": true} while size and mtime still match
 		return vscodeTranscript(p.Session, p.Size, p.Mtime, func(dir string) bool {
-			_, err := resolve(roots, dir)
+			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		})
 	case "chat.handoff": // a VS Code chat written out for an agent in a shared terminal: {"path", "prompt"}
@@ -736,11 +733,11 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			}
 		}()
 		return vscodeHandoff(p.Session, func(dir string) bool {
-			_, err := resolve(roots, dir)
+			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		})
 	case "chat.commands":
-		dir, _ := resolve(roots, p.Dir) // outside the shared folders: the user's commands only
+		dir, _ := fsops.Resolve(roots, p.Dir) // outside the shared folders: the user's commands only
 		return chatCommands(dir, p.Kind), nil
 	case "usage":
 		return claudeUsage(), nil
@@ -757,27 +754,27 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		logf("%s reset the token count of %s %s", s.device, p.Tool, p.Account)
 		return tokenLedger.tokenTotals(), nil
 	case "fs.list":
-		return fsList(roots, p.Path)
+		return fsops.List(roots, p.Path)
 	case "fs.read":
-		return fsRead(roots, p.Path)
+		return fsops.Read(roots, p.Path)
 	case "fs.write":
-		r, err := fsWrite(roots, p.Path, p.Text, p.Mtime)
+		r, err := fsops.Write(roots, p.Path, p.Text, p.Mtime)
 		if err == nil {
 			logf("%s saved %s", s.device, r["path"])
 		}
 		return r, err
 	case "fs.mkdir":
 		logf("%s mkdir %s", s.device, p.Path)
-		return true, fsMkdir(roots, p.Path)
+		return true, fsops.Mkdir(roots, p.Path)
 	case "fs.create":
 		logf("%s create %s", s.device, p.Path)
-		return true, fsCreate(roots, p.Path)
+		return true, fsops.Create(roots, p.Path)
 	case "fs.rename":
 		logf("%s rename %s → %s", s.device, p.Path, p.To)
-		return true, fsRename(roots, p.Path, p.To)
+		return true, fsops.Rename(roots, p.Path, p.To)
 	case "fs.delete":
 		logf("%s delete %s", s.device, p.Path)
-		return true, fsDelete(roots, p.Path)
+		return true, fsops.Delete(roots, p.Path)
 	case "sys.status":
 		return sysStatus(s.a), nil
 	case "shell.list":
@@ -802,7 +799,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		}
 		return m.Call(&plugin.Ctx{
 			Device:  s.device,
-			Resolve: func(path string) (string, error) { return resolve(roots, path) },
+			Resolve: func(path string) (string, error) { return fsops.Resolve(roots, path) },
 			Log:     logf,
 		}, raw)
 	}

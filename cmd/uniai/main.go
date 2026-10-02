@@ -31,9 +31,17 @@ import (
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
+
+	"uniai/internal/rpc"
+	"uniai/internal/ulog"
 )
 
 const label = "org.zarrinbal.uniai"
+
+var logf = ulog.Logf
+
+// rpcError is rpc.Error: a code the app can read.
+type rpcError = rpc.Error
 
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "uniai: "+format+"\n", a...)
