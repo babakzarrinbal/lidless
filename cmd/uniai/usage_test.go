@@ -23,14 +23,14 @@ func TestStatusLine(t *testing.T) {
 
 func TestAddStatusLine(t *testing.T) {
 	for _, in := range []string{"{}\n", "{\n  \"model\": \"opus\",\n  \"hooks\": {}\n}\n"} {
-		out, err := addStatusLine([]byte(in), `"/A B/macremote" statusline`)
+		out, err := addStatusLine([]byte(in), `"/A B/uniai" statusline`)
 		if err != nil {
 			t.Fatal(in, err)
 		}
 		var m map[string]any
 		json.Unmarshal(out, &m)
 		sl, _ := m["statusLine"].(map[string]any)
-		if sl["command"] != `"/A B/macremote" statusline` || (strings.Contains(in, "model") && m["model"] != "opus") {
+		if sl["command"] != `"/A B/uniai" statusline` || (strings.Contains(in, "model") && m["model"] != "opus") {
 			t.Fatalf("%s", out)
 		}
 	}

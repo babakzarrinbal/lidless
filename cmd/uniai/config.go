@@ -40,13 +40,27 @@ type Pairing struct {
 
 func configDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "macremote")
+	return filepath.Join(home, ".config", "uniai")
 }
 
 func configPath() string  { return filepath.Join(configDir(), "agent.json") }
 func pairingPath() string { return filepath.Join(configDir(), "pairing.json") }
 
-var errNotSetUp = errors.New("not set up: run `macremote setup host:port` (your relay)")
+var errNotSetUp = errors.New("not set up: run `uniai setup host:port` (your relay)")
+
+// ensureConfig loads the config, or makes one for this Mac alone: keys and a
+// room, no relay until `uniai setup`, and no keep-awake.
+func ensureConfig() (*Config, error) {
+	c, err := loadConfig()
+	if err != errNotSetUp {
+		return c, err
+	}
+	if c, err = newConfig("", ""); err != nil {
+		return nil, err
+	}
+	c.KeepAwake = false
+	return c, c.save()
+}
 
 func loadConfig() (*Config, error) {
 	b, err := os.ReadFile(configPath())

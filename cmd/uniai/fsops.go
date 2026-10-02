@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"macremote/internal/plugin"
+	"uniai/internal/plugin"
 )
 
 const maxEditable = 4 << 20
@@ -147,7 +147,7 @@ func fsWrite(roots []string, path, text string, mtime int64) (map[string]any, er
 	} else if mtime != 0 {
 		return nil, &rpcError{Code: "conflict", Msg: "the file was deleted on the Mac"}
 	}
-	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".macremote-*")
+	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".uniai-*")
 	if err != nil {
 		return nil, err
 	}

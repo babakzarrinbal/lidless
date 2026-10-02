@@ -1,4 +1,4 @@
-package org.zarrinbal.macremote
+package org.zarrinbal.uniai
 
 import android.Manifest
 import android.app.Notification

@@ -24,9 +24,9 @@ Decided 2026-10-02:
 - **Name: bz-uniai** ("bz-uniai: AI Code Anywhere" in the stores), with its page at
   uniai.zarrinbal.org (a subdomain we own, so nothing to register).
   The `bz-` prefix keeps it apart from other "UniAI" products. Only what users see is renamed: the
-  package `org.zarrinbal.macremote`, `~/.config/macremote`, the Noise prologue,
-  the LaunchAgent labels, the VS Code extension id (`zarrinbal.lidless`) and the
-  box's `/opt/lidless` keep their names, so pairings and installs survive.
+  package `org.zarrinbal.uniai`, `~/.config/uniai`, the Noise prologue,
+  the LaunchAgent labels, the VS Code extension id (`zarrinbal.uniai`) and the
+  box's `/opt/uniai-site` keep their names, so pairings and installs survive.
 
 ## Shipping it publicly
 
@@ -119,11 +119,11 @@ DevOps pipelines, Jira, Confluence, Kubernetes, Argo.
 
 ## Layout
 
-The Go module stays at the root; packages move out of `cmd/macremote` as
+The Go module stays at the root; packages move out of `cmd/uniai` as
 they are touched.
 
 ```
-cmd/macremote      daemon + CLI (the core)        cmd/relay, cmd/noisevec
+cmd/uniai      daemon + CLI (the core)        cmd/relay, cmd/noisevec
 internal/plugin    registry: Method, Ctx, plugins.list
 internal/plugins/  git, later fs, term, ado, jira, k8s…
 app/               the Flutter app: android, ios, macos (then windows, linux)

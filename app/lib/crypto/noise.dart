@@ -10,7 +10,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:cryptography/dart.dart';
 
 const _protocol = 'Noise_IK_25519_ChaChaPoly_SHA256';
-const prologue = 'macremote/1';
+const prologue = 'uniai/1';
 
 const _x = DartX25519();
 final _aead = DartChacha20.poly1305Aead();

@@ -1,31 +1,31 @@
-# bz-uniai (formerly Babzi, Mac Remote, Lidless)
+# bz-uniai
 
 A personal Android app that gives the phone a terminal and the files of a Mac,
 next to the Claude Code app.
 
 ```
-phone ──WSS──▶ relay (your.server:8460) ◀──WSS── macremote agent (Mac)
+phone ──WSS──▶ relay (your.server:8460) ◀──WSS── uniai agent (Mac)
         └──────────── Noise_IK end-to-end ─────────────┘
 ```
 
 - **Relay** (`cmd/relay`, Docker on the server): a dumb pipe that pairs one
   phone socket with the Mac socket of the same room. TLS 1.3 with a self-signed
   certificate; both ends pin sha256(cert DER). It never sees plaintext.
-- **Agent** (`cmd/macremote`, LaunchAgent): dials out to the relay, so the Mac
+- **Agent** (`cmd/uniai`, LaunchAgent): dials out to the relay, so the Mac
   needs no open port and no setup. Phones are authorized by their Noise static
-  key; `macremote pair` issues a one-time token (10 min) as a QR/text code.
+  key; `uniai pair` issues a one-time token (10 min) as a QR/text code.
   Each terminal runs in its own holder process, so it outlives the phone's
   connection and the agent itself, and every device sees the same one. The first
   agent to connect claims its room with its room key; the relay refuses any
   other agent for that room.
 - **App** (`app/`, Flutter): Noise_IK_25519_ChaChaPoly_SHA256 (prologue
-  `macremote/1`, tested against flynn/noise vectors), xterm terminal tabs,
+  `uniai/1`, tested against flynn/noise vectors), xterm terminal tabs,
   file browser and code editor (re_editor), biometric lock.
 
 ## Install
 
-On the Mac, run `brew install babakzarrinbal/macremote/macremote`, then
-`macremote setup your.server:8460`, then scan the code with the app. The package
+On the Mac, run `brew install babakzarrinbal/uniai/uniai`, then
+`uniai setup your.server:8460`, then scan the code with the app. The package
 is generic: you name your relay with `setup`. To run a relay, see
 [docs/hosting.md](docs/hosting.md).
 
@@ -50,18 +50,18 @@ button next to **Start** on the New session page. Manage Macs also renames
 (a nickname on the phone) and removes paired Macs.
 
 **One terminal, every device.** A session opened on a phone shows up on the
-other phones within a second, and on the Mac with `macremote ls` and
-`macremote attach <id>` (Ctrl-] leaves it running). A Claude started on the
-Mac with `macremote claude`, or plain `claude` after `macremote shell-setup`,
+other phones within a second, and on the Mac with `uniai ls` and
+`uniai attach <id>` (Ctrl-] leaves it running). A Claude started on the
+Mac with `uniai claude`, or plain `claude` after `uniai shell-setup`,
 shows up on the phones. There is no moving a session: every device is a window
 onto the same terminal. While a laptop window is attached, its size wins.
-`macremote kill <id>` ends one everywhere. How it works:
+`uniai kill <id>` ends one everywhere. How it works:
 [docs/architecture.md](docs/architecture.md).
 
 Copilot is started as `copilot` from a login shell: `~/.local/bin/copilot`
 links to VS Code's Copilot CLI shim.
 
-Wire format, framing and RPC methods: the header of `cmd/macremote/session.go`
+Wire format, framing and RPC methods: the header of `cmd/uniai/session.go`
 and `app/lib/net/link.dart`.
 
 ## Commands
@@ -71,9 +71,9 @@ Working on it: [AGENTS.md](AGENTS.md) (notes for coding agents and humans) and
 `./dev.sh` lists everything. Common ones:
 
 - `./dev.sh agent-install` — build the agent, init it against the relay, install
-  the LaunchAgent and link `~/.local/bin/macremote`.
-- `macremote pair | devices | revoke <n> | status` — on the Mac.
-- `macremote ls | attach [id] | kill <id> | claude | shell-setup` — shared
+  the LaunchAgent and link `~/.local/bin/uniai`.
+- `uniai pair | devices | revoke <n> | status` — on the Mac.
+- `uniai ls | attach [id] | kill <id> | claude | shell-setup` — shared
   terminals on the Mac.
 - `./dev.sh install` — release APK onto the phone; `./dev.sh pair-adb` sends a
   pairing link over adb.
@@ -84,11 +84,11 @@ Working on it: [AGENTS.md](AGENTS.md) (notes for coding agents and humans) and
 ## On the Mac
 
 - One agent per Mac: either the brew service or the LaunchAgent
-  (`macremote install`), never both. A second copy waits for the first one,
-  and `macremote status` shows which one runs.
+  (`uniai install`), never both. A second copy waits for the first one,
+  and `uniai status` shows which one runs.
 - macOS shows a "background item added" notice once for the LaunchAgent.
 - Desktop/Documents/Downloads need Full Disk Access for the agent binary
-  (`~/Library/Application Support/MacRemote/macremote`) in System Settings →
+  (`~/Library/Application Support/Uniai/uniai`) in System Settings →
   Privacy & Security → Full Disk Access.
 - Lid closed: `sudo pmset -a disablesleep 1` (the app's Mac status sheet has a
   switch that types it into a terminal); `0` undoes it.

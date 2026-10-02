@@ -317,7 +317,7 @@ func vscodeHandoff(id string, keep func(dir string) bool) (map[string]any, error
 		s = "(The start of this conversation is left out.)\n" + s[len(s)-vscodeHandoffMax:]
 	}
 	home, _ := os.UserHomeDir()
-	out := filepath.Join(home, "Library", "Caches", "macremote", "vscode", id+".md")
+	out := filepath.Join(home, "Library", "Caches", "uniai", "vscode", id+".md")
 	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
 		return nil, err
 	}

@@ -220,7 +220,7 @@ footer code { word-break: break-all; color: var(--fg); }
       <div class="wire">TLS, pinned</div>
       <div class="node"><div class="big">⇆</div><b>Relay</b><small>forwards ciphertext</small></div>
       <div class="wire">TLS, pinned</div>
-      <div class="node"><div class="big">💻</div><b>macremote</b><small>agent on your Mac</small></div>
+      <div class="node"><div class="big">💻</div><b>uniai</b><small>agent on your Mac</small></div>
     </div>
     <div class="e2e">Noise IK end-to-end between phone and Mac · keys never leave the devices · the relay can't read or fake a byte</div>
   </div>
@@ -239,26 +239,26 @@ footer code { word-break: break-all; color: var(--fg); }
       <div class="step"><div>
         <h3>Install the agent on your Mac</h3>
         <p>In Terminal, run:</p>
-        <div class="term"><span class="p">$ </span>brew install babakzarrinbal/macremote/macremote
-<span class="p">$ </span>macremote setup <i>your.server</i>:8460<button class="copy">copy</button></div>
+        <div class="term"><span class="p">$ </span>brew install babakzarrinbal/uniai/uniai
+<span class="p">$ </span>uniai setup <i>your.server</i>:8460<button class="copy">copy</button></div>
         <p>Use the address of your relay. <code>setup</code> shows the relay's certificate pin to compare with the server, then starts the agent now and at every login.</p>
       </div></div>
       <div class="step"><div>
         <h3>Scan and go</h3>
-        <p><code>setup</code> ends with a QR code. In the app, tap <b>Pair</b> and scan it. To add more phones later, run <code>macremote pair</code>.</p>
+        <p><code>setup</code> ends with a QR code. In the app, tap <b>Pair</b> and scan it. To add more phones later, run <code>uniai pair</code>.</p>
       </div></div>
       <div class="step"><div>
         <h3>Keep it running</h3>
         <p><code>setup</code> already runs the agent as a background service. It restarts if it ever stops, and starts again each time you log in, including after a reboot. Closing Terminal doesn't stop it. To check it, or to start it by hand:</p>
-        <div class="term"><span class="c"># is it running?  (macremote: started)</span>
-<span class="p">$ </span>brew services list | grep macremote
-<span class="p">$ </span>macremote status
+        <div class="term"><span class="c"># is it running?  (uniai: started)</span>
+<span class="p">$ </span>brew services list | grep uniai
+<span class="p">$ </span>uniai status
 <span class="c"># start it now and at every login</span>
-<span class="p">$ </span>brew services start macremote<button class="copy">copy</button></div>
+<span class="p">$ </span>brew services start uniai<button class="copy">copy</button></div>
         <p>To keep the Mac awake with the lid closed, so your agents keep working in your bag, run this (or flip the switch in the app's Mac sheet):</p>
         <div class="term"><span class="c"># stay awake with the lid closed  (1 = on, 0 = back to normal)</span>
 <span class="p">$ </span>sudo pmset -a disablesleep 1<button class="copy">copy</button></div>
-        <p>The log is in <code>$(brew --prefix)/var/log/macremote.log</code>. If FileVault is on, a rebooted Mac waits for you to log in once, and the agent starts then.</p>
+        <p>The log is in <code>$(brew --prefix)/var/log/uniai.log</code>. If FileVault is on, a rebooted Mac waits for you to log in once, and the agent starts then.</p>
       </div></div>
     </div>
   </div>
@@ -269,7 +269,7 @@ footer code { word-break: break-all; color: var(--fg); }
     <div class="kicker">Questions</div>
     <h2>Good to know</h2>
     <details><summary>Can the relay see my code or my prompts?</summary><p>No. The phone and the Mac set up a Noise IK channel with keys made on each device. The relay only sees which room is connected, from which IP address, and how many bytes pass. Each side checks the other's key, so the relay can't pretend to be your Mac.</p></details>
-    <details><summary>Can I run my own relay?</summary><p>Yes. It's one small Docker container on any server with an open port. Run <code>macremote setup your.server:8460</code> and the app follows, because the pairing code tells it where to connect.</p></details>
+    <details><summary>Can I run my own relay?</summary><p>Yes. It's one small Docker container on any server with an open port. Run <code>uniai setup your.server:8460</code> and the app follows, because the pairing code tells it where to connect.</p></details>
     <details><summary>What happens when I close the app?</summary><p>Your sessions keep running on the Mac. A session that was idle releases its conversation, so your laptop can take over, and it starts again when you come back to it.</p></details>
     <details><summary>Is there an iPhone app?</summary><p>Not yet. Android only for now.</p></details>
     <details><summary>Does it work with the lid closed on battery?</summary><p>macOS normally sleeps when you close the lid. The switch in the app's Mac sheet turns that off (and back on). Keep an eye on the battery, which the same sheet shows.</p></details>

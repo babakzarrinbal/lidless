@@ -1,6 +1,6 @@
 // The connection to the Mac: WSS to the relay (certificate pinned), a Noise IK
 // session inside it, and a small RPC + terminal stream protocol on top.
-// Wire format: see cmd/macremote/session.go.
+// Wire format: see cmd/uniai/session.go.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

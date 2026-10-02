@@ -1,8 +1,8 @@
 package main
 
 import (
-	"macremote/internal/plugin"
-	"macremote/internal/plugins/git"
+	"uniai/internal/plugin"
+	"uniai/internal/plugins/git"
 )
 
 // corePlugins are the plugins this core serves: RPC methods beyond the

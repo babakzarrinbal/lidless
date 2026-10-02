@@ -1,17 +1,17 @@
 {
-  "name": "lidless",
+  "name": "uniai",
   "displayName": "bz-uniai",
   "description": "Opens bz-uniai shared terminals in VS Code: the chats you carried on to all devices, live and typeable here.",
   "version": "0.1.3",
   "publisher": "zarrinbal",
-  "repository": "https://github.com/babakzarrinbal/lidless",
+  "repository": "https://github.com/babakzarrinbal/uniai",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Other"],
   "main": "./extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      { "command": "lidless.attach", "title": "Open a shared terminal", "category": "bz-uniai" }
+      { "command": "uniai.attach", "title": "Open a shared terminal", "category": "bz-uniai" }
     ]
   }
 }

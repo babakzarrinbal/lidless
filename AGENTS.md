@@ -1,4 +1,4 @@
-# bz-uniai (formerly Babzi, Lidless, Mac Remote): working notes for coding agents
+# bz-uniai: working notes for coding agents
 
 CLAUDE.md imports this file. Read README.md for what the product is,
 **docs/architecture.md for how it works** (holders, shared terminals, the
@@ -13,11 +13,11 @@ certificate pin, keys, or tokens. Those live in untracked files (listed below).
 
 | Path | What |
 |---|---|
-| `cmd/macremote/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `hold.go`: the holder process that owns each terminal's pty and serves it on a unix socket (protocol in docs/architecture.md). `term.go`: the agent's side: adopts holders, mirrors their output for phones, sends `{"ev":"terms"}`. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `vscode.go`: VS Code Copilot Chat files; `vscodemirror.go`: a chat carried on in a shared terminal is mirrored back into VS Code's chat file, and the bz-uniai VS Code extension (`vscode-ext/`, embedded, installed by `macremote vscode` or at the first handoff) opens that terminal in VS Code. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `macremote setup`. `main.go`: CLI, LaunchAgent install. |
+| `cmd/uniai/` | Go agent on the Mac. `session.go`: Noise handshake, wire format (header comment), RPC switch. `hold.go`: the holder process that owns each terminal's pty and serves it on a unix socket (protocol in docs/architecture.md). `term.go`: the agent's side: adopts holders, mirrors their output for phones, sends `{"ev":"terms"}`. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `chat.go`/`claude.go`/`copilot.go`: reading Claude/Copilot transcripts. `vscode.go`: VS Code Copilot Chat files; `vscodemirror.go`: a chat carried on in a shared terminal is mirrored back into VS Code's chat file, and the bz-uniai VS Code extension (`vscode-ext/`, embedded, installed by `uniai vscode` or at the first handoff) opens that terminal in VS Code. `shell.go`: shell list and default. `lock.go`: one agent per Mac. `setup.go`: `uniai setup`. `main.go`: CLI, LaunchAgent install. |
 | `cmd/relay/` | Go relay (Docker on the server, port 8460). A dumb pipe: per-IP rate limit (burst 15, 1 per 2 s), 8 phones per room, 10 s accept timeout. Close codes: 4404 Mac offline, 4408 Mac did not answer, 4429 too many, 4001 agent replaced. |
 | `cmd/noisevec/` | Generates `app/test/noise_vectors.json` (`./dev.sh vectors`). |
-| `app/` | Flutter Android app (`org.zarrinbal.macremote`, shown as "bz-uniai"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac, live-synced on `terms` events. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
-| `packaging/homebrew/` | Formula template; `./dev.sh brew` fills it in. Tap: github.com/babakzarrinbal/homebrew-macremote. |
+| `app/` | Flutter Android app (`org.zarrinbal.uniai`, shown as "bz-uniai"). `lib/net/link.dart`: connection, reconnect, RPC. `lib/net/store.dart`: pairings (one phone key per Mac, nickname). `lib/model/terms.dart`: terminal list per Mac, live-synced on `terms` events. `lib/ui/`: screens (`home`, `session_view`, `new_session`, `macs`, `shells`, `terminal_panel`, `files_panel`, `chat_view`…). |
+| `packaging/homebrew/` | Formula template; `./dev.sh brew` fills it in. Tap: github.com/babakzarrinbal/homebrew-uniai. |
 | `deploy/` | Relay Dockerfile + compose; `deploy/site/` is the landing page's nginx. |
 | `site/` | Landing page (uniai.zarrinbal.org); `site-build` refuses to ship a server address. |
 
@@ -36,13 +36,13 @@ through brew.
 ```bash
 ./dev.sh doctor                 # is this Mac ready to build? (tools, keystore, .server.env, box ssh)
 ./dev.sh go-check               # tidy, fmt, vet (linux+darwin), go test
-./dev.sh go <args…>             # any go command in Docker (go get, go test -run X ./cmd/macremote)
+./dev.sh go <args…>             # any go command in Docker (go get, go test -run X ./cmd/uniai)
 ./dev.sh app-analyze            # zero issues is the baseline
 ./dev.sh app-test [test/x.dart] # one PASS/FAIL line; full log build/logs/app-test.log
-./dev.sh agent                  # bin/macremote (darwin/arm64)
+./dev.sh agent                  # bin/uniai (darwin/arm64)
 ./dev.sh agent-install          # build + install as this Mac's LaunchAgent (restarts the agent; terminals survive)
 ./dev.sh apk | install | run    # release APK; install onto the Samsung (ANDROID_SERIAL overrides)
-./dev.sh log                    # agent log tail (~/Library/Logs/macremote.log)
+./dev.sh log                    # agent log tail (~/Library/Logs/uniai.log)
 ```
 Running `./dev.sh` with no command lists the rest. Output is already a summary; full logs go to `build/logs/`.
 
@@ -61,21 +61,21 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
 - **Holders outlive upgrades**: keep the holder protocol backward compatible
   (docs/architecture.md, "Holder protocol").
 - **One agent per Mac.** The agent runs either as a brew service
-  (`sh.brew.macremote`; older Homebrew: `homebrew.mxcl.macremote`) or as the LaunchAgent (`org.zarrinbal.macremote`,
-  from `macremote install` / `agent-install`), never both. Two copies share a
+  (`sh.brew.uniai`; older Homebrew: `homebrew.mxcl.uniai`) or as the LaunchAgent (`org.zarrinbal.uniai`,
+  from `uniai install` / `agent-install`), never both. Two copies share a
   room and replace each other on the relay every ~2 s, so every phone drops.
   `lock.go` now makes a second copy wait, and `install` refuses next to a brew
   service. To switch a brew Mac to the dev build:
-  `brew services stop macremote && ./dev.sh agent-install`.
+  `brew services stop uniai && ./dev.sh agent-install`.
 - **Secrets are never printed, committed or copied:**
-  - `.server.env` (`RELAY_HOST`) and `~/.config/macremote/agent.json` (keys,
+  - `.server.env` (`RELAY_HOST`) and `~/.config/uniai/agent.json` (keys,
     room key);
   - `~/.android/debug.keystore`, `~/.config/cloud/cf.env`;
   - the relay's data volume on the box.
-- **On the box:** only the relay (`/opt/macremote`, :8460) and the site
-  (`/opt/lidless`, :8462, from the old name) are ours. Never bind :443, and never touch
+- **On the box:** only the relay (`/opt/uniai`, :8460) and the site
+  (`/opt/uniai-site`, :8462, from the old name) are ours. Never bind :443, and never touch
   xray/tailscale/networking there. Read logs with
-  `ssh root@$RELAY_HOST docker logs --since 30m macremote-relay`, and mask IPs
+  `ssh root@$RELAY_HOST docker logs --since 30m uniai-relay`, and mask IPs
   in anything you paste.
 - **Phones:** don't drive a phone (taps, installs) while the user is on it.
   Debug from code and logs first; screenshots are a last resort. The release
@@ -92,7 +92,7 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
    mean two agents on that Mac (see "One agent per Mac"). `pipe open/close`
    lines show phone sessions and byte counts. If the room never shows up, the
    phone is being rate-limited or is offline.
-3. On the other Mac, `macremote status` reports a LaunchAgent, a brew service,
+3. On the other Mac, `uniai status` reports a LaunchAgent, a brew service,
    or both.
 
 ## Working with the owner (Babak)
@@ -110,18 +110,18 @@ Before every commit, run `go-check`, `app-analyze` and `app-test`.
 - **Released through brew as 2026.10.01.3** (shell choice, Manage Macs agent
   side, one-agent lock, `sh.brew.*` label). The other Mac still needs:
   ```bash
-  brew update && brew upgrade macremote && brew services restart macremote
+  brew update && brew upgrade uniai && brew services restart uniai
   brew upgrade --cask --greedy copilot-cli
   ```
 - **Copilot resume fails** ("Session file is corrupted … unknown event type")
   when Homebrew's `copilot-cli` is older than the copy VS Code bundles. It is
   an auto-updating cask, so plain `brew upgrade` skips it; use `--greedy`.
   Evidence: `~/.copilot/logs/`.
-- **The other Mac (brew) runs two agents** after a `macremote install`. Fix:
+- **The other Mac (brew) runs two agents** after a `uniai install`. Fix:
   ```bash
-  macremote uninstall && brew services restart macremote
+  uniai uninstall && brew services restart uniai
   ```
-- Brew service log: `/opt/homebrew/var/log/macremote.log` (`./dev.sh log`
+- Brew service log: `/opt/homebrew/var/log/uniai.log` (`./dev.sh log`
   reads the LaunchAgent's).
 - **Shared terminals (holders) run on this Mac and the phones, not yet in
   brew.** An `agent-install` kept all holders. The other Mac still runs the

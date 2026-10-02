@@ -1,4 +1,4 @@
-module macremote
+module uniai
 
 go 1.26.0
 

@@ -1,9 +1,9 @@
-// bz-uniai in VS Code (the extension id stays zarrinbal.lidless). The macremote agent writes links.json: the shared
+// bz-uniai in VS Code (the extension id stays zarrinbal.uniai). The uniai agent writes links.json: the shared
 // terminals carrying on a VS Code chat ("Continue on all devices" on a
 // phone). Each one opens here once, in the window that has its folder, as
-// `macremote attach <id>`: live, and typed into like any terminal. The
+// `uniai attach <id>`: live, and typed into like any terminal. The
 // "Open a shared terminal" command joins any other one. The agent installs
-// this extension (macremote vscode); it is embedded in the agent's binary.
+// this extension (uniai vscode); it is embedded in the agent's binary.
 
 const vscode = require('vscode');
 const cp = require('child_process');
@@ -11,8 +11,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const LINKS = path.join(os.homedir(), 'Library', 'Caches', 'macremote', 'vscode', 'links.json');
-const OPENED = 'lidless.opened'; // terminal ids opened once in this workspace: closing one keeps it closed
+const LINKS = path.join(os.homedir(), 'Library', 'Caches', 'uniai', 'vscode', 'links.json');
+const OPENED = 'uniai.opened'; // terminal ids opened once in this workspace: closing one keeps it closed
 
 const terminals = new Map(); // terminal id -> vscode.Terminal
 
@@ -24,12 +24,12 @@ function readLinks() {
   }
 }
 
-// macremote: the agent's own binary, else Homebrew's.
+// uniai: the agent's own binary, else Homebrew's.
 function bin() {
-  for (const p of [readLinks().bin, '/opt/homebrew/bin/macremote', '/usr/local/bin/macremote']) {
+  for (const p of [readLinks().bin, '/opt/homebrew/bin/uniai', '/usr/local/bin/uniai']) {
     if (p && fs.existsSync(p)) return p;
   }
-  return 'macremote';
+  return 'uniai';
 }
 
 function folders() {
@@ -90,7 +90,7 @@ async function pick() {
 }
 
 function activate(ctx) {
-  ctx.subscriptions.push(vscode.commands.registerCommand('lidless.attach', pick));
+  ctx.subscriptions.push(vscode.commands.registerCommand('uniai.attach', pick));
   ctx.subscriptions.push(vscode.window.onDidCloseTerminal(t => {
     for (const [id, x] of terminals) if (x === t) terminals.delete(id);
   }));

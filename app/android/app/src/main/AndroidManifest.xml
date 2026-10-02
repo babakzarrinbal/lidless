@@ -37,7 +37,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="macremote" android:host="pair"/>
+                <data android:scheme="uniai" android:host="pair"/>
             </intent-filter>
         </activity>
         <!-- Keeps the link to the Mac open while an agent works and the app is

@@ -380,7 +380,7 @@ func loadCert(dir string) (tls.Certificate, error) {
 		serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
 		tmpl := &x509.Certificate{
 			SerialNumber: serial,
-			Subject:      pkix.Name{CommonName: "macremote-relay"},
+			Subject:      pkix.Name{CommonName: "uniai-relay"},
 			NotBefore:    time.Now().Add(-time.Hour),
 			NotAfter:     time.Now().AddDate(20, 0, 0),
 			KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -440,6 +440,6 @@ func main() {
 	}
 	log.Printf("relay on %s pin=%s", *addr, pin(cert))
 	_, port, _ := net.SplitHostPort(*addr)
-	log.Printf("on a Mac: macremote setup <this server>:%s -pin %s", port, pin(cert))
+	log.Printf("on a Mac: uniai setup <this server>:%s -pin %s", port, pin(cert))
 	log.Fatal(srv.ListenAndServeTLS("", ""))
 }

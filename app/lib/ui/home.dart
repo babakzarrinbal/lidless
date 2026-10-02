@@ -245,8 +245,8 @@ class _HomeState extends State<Home> {
           title: const Text('Open on the Mac'),
           content: Text(canTake
               ? 'Claude has this conversation open on the Mac outside a shared terminal (an editor, or a '
-                  'terminal without `macremote shell-setup`).\n\nTake over quits it (it saves first) and carries on '
-                  'in a shared terminal: here, on your other devices, and on the Mac with `macremote attach`.'
+                  'terminal without `uniai shell-setup`).\n\nTake over quits it (it saves first) and carries on '
+                  'in a shared terminal: here, on your other devices, and on the Mac with `uniai attach`.'
               : '$name has this conversation open on the Mac outside a shared terminal. Opening it here too '
                   'runs two copies, and neither sees the other\'s new messages.'),
           actions: [

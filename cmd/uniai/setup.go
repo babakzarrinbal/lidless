@@ -19,13 +19,13 @@ import (
 // agent (as a brew service when brew installed it, else a LaunchAgent) and
 // show a pairing code.
 //
-//	macremote setup relay.example.com:8460 [-pin <sha256>]
+//	uniai setup relay.example.com:8460 [-pin <sha256>]
 //
 // Without -pin it shows the relay's certificate pin to compare with
 // `relay pin` on the server before trusting it.
 func cmdSetup(args []string) {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
-	pin := fs.String("pin", "", "sha256 of the relay certificate (`docker exec macremote-relay /relay pin` on the server)")
+	pin := fs.String("pin", "", "sha256 of the relay certificate (`docker exec uniai-relay /relay pin` on the server)")
 	noPair := fs.Bool("no-pair", false, "don't show a pairing code at the end")
 	relay := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -36,7 +36,7 @@ func cmdSetup(args []string) {
 		relay = fs.Arg(0)
 	}
 	if relay == "" {
-		die("usage: macremote setup host:port [-pin <sha256>]")
+		die("usage: uniai setup host:port [-pin <sha256>]")
 	}
 	if _, _, err := net.SplitHostPort(relay); err != nil {
 		relay = net.JoinHostPort(relay, "8460")
@@ -75,9 +75,9 @@ func cmdSetup(args []string) {
 		if _, err := os.Stat(plistPath()); err == nil {
 			cmdUninstall() // an older install.sh copy: only one agent may run
 		}
-		out, err := exec.Command(brew, "services", "restart", "macremote").CombinedOutput()
+		out, err := exec.Command(brew, "services", "restart", "uniai").CombinedOutput()
 		if err != nil {
-			die("brew services restart macremote: %v\n%s", err, out)
+			die("brew services restart uniai: %v\n%s", err, out)
 		}
 		fmt.Println("agent running (brew services); it starts at every login")
 	} else {
@@ -105,7 +105,7 @@ func relayPin(addr string) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// brewInstalled returns the brew binary when this macremote came from a
+// brewInstalled returns the brew binary when this uniai came from a
 // Homebrew Cellar, else "".
 func brewInstalled() string {
 	exe, err := os.Executable()
@@ -115,7 +115,7 @@ func brewInstalled() string {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	i := strings.Index(exe, "/Cellar/macremote/")
+	i := strings.Index(exe, "/Cellar/uniai/")
 	if i < 0 {
 		return ""
 	}

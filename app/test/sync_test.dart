@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/model/terms.dart';
+import 'package:uniai/model/terms.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'home_test.dart' show FakeLink;
@@ -20,7 +20,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(terms.sessions.map((s) => s.id), ['s1']);
 
-    // The laptop started Claude (`macremote claude`): the Mac says so.
+    // The laptop started Claude (`uniai claude`): the Mac says so.
     link.answers['term.list'] = [term(7, 's1'), term(9, 's2')];
     link.macEvents.add(('terms', null));
     await tester.pump(const Duration(milliseconds: 100));

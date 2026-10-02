@@ -4,10 +4,10 @@ package main
 // shell, keeps the recent output, and serves it on a unix socket. It runs in
 // a session of its own (setsid), so it outlives the agent: restarting or
 // upgrading the agent no longer ends anyone's terminal. Its clients are the
-// agent (which serves it to every phone) and `macremote attach` on the Mac
+// agent (which serves it to every phone) and `uniai attach` on the Mac
 // itself, any number at once: one terminal, seen and typed into everywhere.
 //
-// Socket: ~/.config/macremote/terms/<id>.sock (the folder is 0700).
+// Socket: ~/.config/uniai/terms/<id>.sock (the folder is 0700).
 // Frames: [type byte][len u32][payload]. Integers are big-endian.
 //
 //	holder → client
@@ -237,8 +237,8 @@ type holder struct {
 	seq     int
 }
 
-// cmdHold runs a holder: `macremote hold -id N -dir D -shell S …`. The agent
-// and `macremote claude` start it; nobody types this.
+// cmdHold runs a holder: `uniai hold -id N -dir D -shell S …`. The agent
+// and `uniai claude` start it; nobody types this.
 func cmdHold(args []string) {
 	fs := flag.NewFlagSet("hold", flag.ExitOnError)
 	id := fs.Uint64("id", 0, "terminal id")
@@ -275,7 +275,7 @@ func cmdHold(args []string) {
 		c, r = 80, 24
 	}
 	cmd := exec.Command(*shell, "-l")
-	cmd.Env = append(shellEnv(), "SHELL="+*shell, "MACREMOTE_TERM="+strconv.FormatUint(*id, 10))
+	cmd.Env = append(shellEnv(), "SHELL="+*shell, "UNIAI_TERM="+strconv.FormatUint(*id, 10))
 	cmd.Dir = *dir
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: c, Rows: r})
 	if err != nil {
@@ -603,7 +603,7 @@ func dialHold(id uint32) (net.Conn, holdInfo, error) {
 		err = json.Unmarshal(p, &info)
 	}
 	if err == nil && (info.V < 1 || info.V > holdProto) { // older ones are still spoken
-		err = fmt.Errorf("terminal %d speaks protocol %d; this macremote knows up to %d", id, info.V, holdProto)
+		err = fmt.Errorf("terminal %d speaks protocol %d; this uniai knows up to %d", id, info.V, holdProto)
 	}
 	if err != nil {
 		c.Close()

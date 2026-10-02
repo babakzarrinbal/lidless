@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/crypto/noise.dart';
+import 'package:uniai/crypto/noise.dart';
 
 void main() {
   final v = (jsonDecode(File('test/noise_vectors.json').readAsStringSync())

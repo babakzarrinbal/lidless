@@ -1,9 +1,9 @@
-# Running Mac Remote: the official relay or your own
+# Running bz-uniai: the official relay or your own
 
-Mac Remote has three parts:
+bz-uniai has three parts:
 
 - the app on the phone;
-- `macremote`, the agent on the Mac;
+- `uniai`, the agent on the Mac;
 - a relay on a server.
 
 The phone and the Mac both dial out to the relay, which joins the two sockets of
@@ -11,7 +11,7 @@ the same room. Everything between them is end-to-end encrypted (Noise_IK), so
 the relay only ever forwards ciphertext. It holds no accounts and no keys, only
 its TLS certificate and which agent claimed which room.
 
-The app has no relay built in. The pairing code that `macremote pair` shows
+The app has no relay built in. The pairing code that `uniai pair` shows
 carries the relay's address and its certificate pin. So the same app build
 works against any relay: pairing tells it where to go.
 
@@ -22,21 +22,21 @@ works against any relay: pairing tells it where to go.
 2. **The Mac.** Install the agent and point it at that relay:
 
    ```sh
-   brew install babakzarrinbal/macremote/macremote
-   macremote setup your.server:8460
+   brew install babakzarrinbal/uniai/uniai
+   uniai setup your.server:8460
    ```
 
    `setup` shows the relay's certificate pin. Check that it matches
-   `docker exec macremote-relay /relay pin` on the server, or pass the pin with
+   `docker exec uniai-relay /relay pin` on the server, or pass the pin with
    `-pin <sha256>` to skip the question. It then starts the agent as a brew
    service (now and at every login) and shows a pairing QR code.
 3. **The phone.** In the app, tap **Pair** (or **Pair another Mac** in the
    drawer) and scan the code. Each pairing code is valid for 10 minutes and
-   works once. To pair more phones later, run `macremote pair`.
+   works once. To pair more phones later, run `uniai pair`.
 
 The brew package is generic: no relay is built in. Every Mac names its own
 relay with `setup`. The tap is
-https://github.com/babakzarrinbal/homebrew-macremote.
+https://github.com/babakzarrinbal/homebrew-uniai.
 
 To point a Mac that is already set up at another relay, run `setup` again. Its
 keys stay the same, but phones paired before the change still have the old
@@ -54,10 +54,10 @@ You can build without Go installed; the commands below run Go in Docker:
 docker run --rm -v "$PWD":/src -w /src -e CGO_ENABLED=0 -e GOOS=linux -e GOARCH=amd64 \
   golang:1.26 go build -trimpath -ldflags=-s -o deploy/relay-linux-amd64 ./cmd/relay
 cd deploy && docker compose up -d --build
-docker exec macremote-relay /relay pin   # the certificate pin: 64 hex characters
+docker exec uniai-relay /relay pin   # the certificate pin: 64 hex characters
 ```
 
-The relay's log at startup also shows the `macremote setup` line to run on a
+The relay's log at startup also shows the `uniai setup` line to run on a
 Mac.
 
 - **arm64 server:** set `GOARCH=arm64`.
@@ -66,7 +66,7 @@ Mac.
 
 The certificate is stored in the `data` volume, so the pin stays the same
 across restarts and upgrades. If you delete the volume, the pin changes, and
-every Mac needs `macremote setup` again.
+every Mac needs `uniai setup` again.
 
 The author's relay runs this way on port 8460 and is deployed with
 `./dev.sh relay-deploy`.
@@ -74,9 +74,9 @@ The author's relay runs this way on port 8460 and is deployed with
 ## Building it yourself
 
 - **Agent:** `./dev.sh agent-install` builds it, installs it as a LaunchAgent
-  instead of a brew service, and links `~/.local/bin/macremote`. A Mac that
+  instead of a brew service, and links `~/.local/bin/uniai`. A Mac that
   isn't set up yet gets the author's relay; to use another one, run
-  `macremote setup host:port`.
+  `uniai setup host:port`.
 - **App:** use the published app, or build it with `./dev.sh apk`. Any build
   works with any relay once it scans a pairing code.
 

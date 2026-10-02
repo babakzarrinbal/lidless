@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/model/terms.dart';
-import 'package:macremote/net/store.dart';
-import 'package:macremote/ui/macs.dart';
-import 'package:macremote/ui/terminal_panel.dart';
+import 'package:uniai/model/terms.dart';
+import 'package:uniai/net/store.dart';
+import 'package:uniai/ui/macs.dart';
+import 'package:uniai/ui/terminal_panel.dart';
 
 import 'home_test.dart' show FakeLink;
 

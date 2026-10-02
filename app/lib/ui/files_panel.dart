@@ -293,7 +293,7 @@ class FilesPanel extends StatelessWidget {
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
                             'macOS protects this folder. Allow it once on the Mac: '
-                            'System Settings → Privacy & Security → Full Disk Access → macremote.',
+                            'System Settings → Privacy & Security → Full Disk Access → uniai.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: C.dim, fontSize: 12)),
                         ),

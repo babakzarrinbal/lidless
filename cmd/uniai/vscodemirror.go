@@ -37,10 +37,10 @@ import (
 
 func vscodeCache() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "Caches", "macremote", "vscode")
+	return filepath.Join(home, "Library", "Caches", "uniai", "vscode")
 }
 
-var reHandoff = regexp.MustCompile(`/macremote/vscode/([A-Za-z0-9-]{8,64})\.md`)
+var reHandoff = regexp.MustCompile(`/uniai/vscode/([A-Za-z0-9-]{8,64})\.md`)
 
 type vscodeLink struct {
 	Chat  string `json:"chat"`
@@ -286,7 +286,7 @@ func vscodeWriteTurns(path, chat string, term uint32, turns []vscodeTurn) error 
 	for i, r := range reqs {
 		id, _ := r["requestId"].(string)
 		at[id] = i
-		if !strings.HasPrefix(id, "request_lidless-") {
+		if !strings.HasPrefix(id, "request_uniai-") {
 			tmpl = r
 		}
 	}
@@ -294,7 +294,7 @@ func vscodeWriteTurns(path, chat string, term uint32, turns []vscodeTurn) error 
 	enc := json.NewEncoder(&out)
 	enc.SetEscapeHTML(false)
 	for i, turn := range turns {
-		id := fmt.Sprintf("request_lidless-%d-%d", term, i)
+		id := fmt.Sprintf("request_uniai-%d-%d", term, i)
 		answer := turn.Answer
 		if answer == "" {
 			answer = "*…*"
@@ -497,7 +497,7 @@ func vscodeExtInstall(force bool) (string, error) {
 	return "installed " + full + " into " + strings.Join(did, ", "), nil
 }
 
-// cmdVSCode installs the extension: `macremote vscode`.
+// cmdVSCode installs the extension: `uniai vscode`.
 func cmdVSCode(args []string) {
 	msg, err := vscodeExtInstall(len(args) > 0 && args[0] == "-force")
 	if err != nil {

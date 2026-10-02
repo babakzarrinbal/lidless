@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/crypto/noise.dart';
-import 'package:macremote/model/chat.dart';
-import 'package:macremote/model/claude.dart';
-import 'package:macremote/model/terms.dart';
-import 'package:macremote/net/link.dart';
-import 'package:macremote/net/store.dart';
-import 'package:macremote/ui/agent_extras.dart';
-import 'package:macremote/ui/chat_view.dart';
-import 'package:macremote/ui/new_session.dart';
-import 'package:macremote/ui/workspaces.dart';
+import 'package:uniai/crypto/noise.dart';
+import 'package:uniai/model/chat.dart';
+import 'package:uniai/model/claude.dart';
+import 'package:uniai/model/terms.dart';
+import 'package:uniai/net/link.dart';
+import 'package:uniai/net/store.dart';
+import 'package:uniai/ui/agent_extras.dart';
+import 'package:uniai/ui/chat_view.dart';
+import 'package:uniai/ui/new_session.dart';
+import 'package:uniai/ui/workspaces.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

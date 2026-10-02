@@ -1,4 +1,4 @@
-package org.zarrinbal.macremote
+package org.zarrinbal.uniai
 
 import android.app.PendingIntent
 import android.app.Service

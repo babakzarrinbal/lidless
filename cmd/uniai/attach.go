@@ -1,8 +1,8 @@
 package main
 
-// The laptop's side of shared terminals: `macremote claude` starts Claude in
+// The laptop's side of shared terminals: `uniai claude` starts Claude in
 // a holder (hold.go) and shows it in this window, so the phones see the same
-// terminal; `macremote attach` joins any terminal a phone or another window
+// terminal; `uniai attach` joins any terminal a phone or another window
 // started. Leaving the window (Ctrl-], or closing it) leaves the terminal
 // running for everyone else.
 
@@ -79,9 +79,9 @@ func cmdAttach(args []string) {
 	}
 	if len(pick) != 1 {
 		if len(l) == 0 {
-			die("no shared terminals; start one with `macremote claude`")
+			die("no shared terminals; start one with `uniai claude`")
 		}
-		fmt.Fprintln(os.Stderr, "which one? macremote attach <id>")
+		fmt.Fprintln(os.Stderr, "which one? uniai attach <id>")
 		cmdLs(nil)
 		os.Exit(1)
 	}
@@ -91,7 +91,7 @@ func cmdAttach(args []string) {
 // cmdKill ends terminal id on every device, like closing its tab on a phone.
 func cmdKill(args []string) {
 	if len(args) != 1 {
-		die("usage: macremote kill <id>  (ids: macremote ls)")
+		die("usage: uniai kill <id>  (ids: uniai ls)")
 	}
 	id, err := strconv.ParseUint(args[0], 10, 32)
 	if err != nil {
@@ -113,12 +113,12 @@ func cmdKill(args []string) {
 	}
 }
 
-// cmdAgentCLI is `macremote claude|copilot [args]`: the agent in a shared
+// cmdAgentCLI is `uniai claude|copilot [args]`: the agent in a shared
 // terminal, shown here. A conversation already running in one is joined
 // rather than started twice (two Claudes on one conversation each miss the
 // other's messages).
 func cmdAgentCLI(tool string, args []string) {
-	if os.Getenv("MACREMOTE_TERM") != "" {
+	if os.Getenv("UNIAI_TERM") != "" {
 		execReal(tool, args) // already in a shared terminal (the alias, typed in one)
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -132,10 +132,10 @@ func cmdAgentCLI(tool string, args []string) {
 		if sid := resumeTarget(cwd, args); sid != "" {
 			if pid := claudeRunning()[sid]; pid != 0 {
 				if id := holderOf(pid); id != 0 {
-					fmt.Fprintf(os.Stderr, "macremote: joining terminal %d, where this conversation is open\n", id)
+					fmt.Fprintf(os.Stderr, "uniai: joining terminal %d, where this conversation is open\n", id)
 					os.Exit(attachTerm(id))
 				}
-				fmt.Fprintf(os.Stderr, "macremote: quitting the Claude that has this conversation open elsewhere (pid %d)…\n", pid)
+				fmt.Fprintf(os.Stderr, "uniai: quitting the Claude that has this conversation open elsewhere (pid %d)…\n", pid)
 				if err := stopClaude(sid); err != nil {
 					die("%v", err)
 				}
@@ -176,7 +176,7 @@ func execReal(tool string, args []string) {
 		die("%s is not on PATH", tool)
 	}
 	if a, b := realPath(path), realPath(self); a == b {
-		die("%s on PATH is macremote itself; point the alias at macremote instead", tool)
+		die("%s on PATH is uniai itself; point the alias at uniai instead", tool)
 	}
 	die("%v", syscall.Exec(path, append([]string{tool}, args...), os.Environ()))
 }
@@ -310,7 +310,7 @@ func attachTerm(id uint32) int {
 			restore()
 			select {
 			case <-detached:
-				fmt.Printf("[left terminal %d; it keeps running — macremote attach %d]\n", id, id)
+				fmt.Printf("[left terminal %d; it keeps running — uniai attach %d]\n", id, id)
 				return 0
 			default:
 			}
@@ -336,16 +336,16 @@ func attachTerm(id uint32) int {
 	}
 }
 
-const shellSetupMark = "# macremote: claude and copilot in terminals shared with the phones"
+const shellSetupMark = "# uniai: claude and copilot in terminals shared with the phones"
 
-// cmdShellSetup aliases claude and copilot to macremote in ~/.zshrc and
+// cmdShellSetup aliases claude and copilot to uniai in ~/.zshrc and
 // ~/.bashrc (-remove takes it out again).
 func cmdShellSetup(args []string) {
 	remove := len(args) > 0 && (args[0] == "-remove" || args[0] == "--remove")
-	bin := "macremote"
-	if _, err := exec.LookPath("macremote"); err != nil {
+	bin := "uniai"
+	if _, err := exec.LookPath("uniai"); err != nil {
 		// Not on PATH: the LaunchAgent's copy, else this one.
-		bin = filepath.Join(supportDir(), "macremote")
+		bin = filepath.Join(supportDir(), "uniai")
 		if _, err := os.Stat(bin); err != nil {
 			bin = must(os.Executable())
 		}

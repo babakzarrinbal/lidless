@@ -22,16 +22,16 @@ void main() {
     statusBarIconBrightness: Brightness.light,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
-  runApp(const MacRemote());
+  runApp(const Uniai());
 }
 
-class MacRemote extends StatefulWidget {
-  const MacRemote({super.key});
+class Uniai extends StatefulWidget {
+  const Uniai({super.key});
   @override
-  State<MacRemote> createState() => _MacRemoteState();
+  State<Uniai> createState() => _UniaiState();
 }
 
-class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
+class _UniaiState extends State<Uniai> with WidgetsBindingObserver {
   final _nav = GlobalKey<NavigatorState>();
   final _auth = LocalAuthentication();
   bool _ready = false, _locked = true, _authing = false, _canLock = true;
@@ -121,7 +121,7 @@ class _MacRemoteState extends State<MacRemote> with WidgetsBindingObserver {
     _authing = true;
     try {
       final ok = await _auth.authenticate(
-        localizedReason: 'Unlock Mac Remote',
+        localizedReason: 'Unlock bz-uniai',
         biometricOnly: false,
         persistAcrossBackgrounding: true,
       );
@@ -291,7 +291,7 @@ class _LockScreen extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.lock_rounded, size: 44, color: C.accent),
             const SizedBox(height: 16),
-            const Text('Mac Remote is locked',
+            const Text('bz-uniai is locked',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 24),
             FilledButton.icon(

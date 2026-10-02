@@ -2,7 +2,7 @@ package main
 
 // Context window (and, from older Claude Code versions, plan limits), as
 // Claude Code reports them: it hands its status line command a JSON snapshot
-// after every answer. `macremote statusline` is that command; it keeps the
+// after every answer. `uniai statusline` is that command; it keeps the
 // latest snapshot per session here, prints a short line for the terminal, and
 // the phone reads the snapshots. Plan limits now come from limits.go.
 
@@ -241,7 +241,7 @@ func claudeSettingsPath() string {
 
 func statuslineInstalled() bool {
 	b, _ := os.ReadFile(claudeSettingsPath())
-	return bytes.Contains(b, []byte("macremote\\\" statusline")) || bytes.Contains(b, []byte("macremote statusline"))
+	return bytes.Contains(b, []byte("uniai\\\" statusline")) || bytes.Contains(b, []byte("uniai statusline"))
 }
 
 func statuslineInstall() {
@@ -257,11 +257,11 @@ func statuslineInstall() {
 func stableExe() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return filepath.Join(supportDir(), "macremote")
+		return filepath.Join(supportDir(), "uniai")
 	}
 	exe, _ = filepath.EvalSymlinks(exe)
-	if i := strings.Index(exe, "/Cellar/macremote/"); i >= 0 {
-		return exe[:i] + "/opt/macremote/bin/macremote"
+	if i := strings.Index(exe, "/Cellar/uniai/"); i >= 0 {
+		return exe[:i] + "/opt/uniai/bin/uniai"
 	}
 	return exe
 }
@@ -289,7 +289,7 @@ func statuslineEnsure() string {
 		return fmt.Sprintf("status line: %s is not plain JSON (%v); usage won't show on the phone", p, err)
 	}
 	if _, ok := m["statusLine"]; ok {
-		return "Claude Code has its own status line; usage won't show on the phone until it runs `macremote statusline`"
+		return "Claude Code has its own status line; usage won't show on the phone until it runs `uniai statusline`"
 	}
 	out, err := addStatusLine(b, strconv.Quote(stableExe())+" statusline")
 	if err == nil {

@@ -243,7 +243,7 @@ class _TranscriptPageState extends State<TranscriptPage> {
             padding: EdgeInsets.fromLTRB(20, 18, 20, 6),
             child: Text(
                 'VS Code\'s chat can only grow inside VS Code. This starts a session in a shared terminal that reads '
-                'the chat so far and carries on: every phone and the Mac (macremote attach) see it live.',
+                'the chat so far and carries on: every phone and the Mac (uniai attach) see it live.',
                 style: TextStyle(color: C.dim, height: 1.4)),
           ),
           for (final t in const ['copilot', 'claude'])

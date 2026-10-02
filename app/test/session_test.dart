@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/model/terms.dart';
-import 'package:macremote/ui/new_session.dart';
+import 'package:uniai/model/terms.dart';
+import 'package:uniai/ui/new_session.dart';
 
 void main() {
   test('agent command', () {

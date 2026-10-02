@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"macremote/internal/plugin"
+	"uniai/internal/plugin"
 )
 
 func sh(t *testing.T, dir string, args ...string) {

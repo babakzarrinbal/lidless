@@ -3,7 +3,7 @@ package main
 // The agent's view of the terminals. Each one runs in its own holder process
 // (hold.go), which outlives the agent; the agent is one of its clients. It
 // adopts every holder it finds, whoever started it (a phone, or
-// `macremote claude` on the laptop), and mirrors its output for the phones.
+// `uniai claude` on the laptop), and mirrors its output for the phones.
 
 import (
 	"encoding/binary"
@@ -189,12 +189,12 @@ func shellEnv() []string {
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch k {
-		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "XPC_FLAGS", "MACREMOTE_TERM":
+		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "XPC_FLAGS", "UNIAI_TERM":
 			continue
 		}
 		env = append(env, kv)
 	}
-	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=MacRemote")
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Uniai")
 	if os.Getenv("LANG") == "" {
 		env = append(env, "LANG=en_US.UTF-8")
 	}
@@ -250,7 +250,7 @@ func (m *Terms) open(shell, dir string, cols, rows uint16, kind, session, run st
 	return t, nil
 }
 
-// watch adopts holders as they appear (a laptop's `macremote claude`, or
+// watch adopts holders as they appear (a laptop's `uniai claude`, or
 // all of them after the agent restarts) and clears sockets left by holders
 // that died.
 func (m *Terms) watch() {

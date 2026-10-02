@@ -96,7 +96,7 @@ class PairScreen extends StatelessWidget {
                             Text('On your Mac, run', style: TextStyle(color: C.dim)),
                             SizedBox(height: 8),
                             SelectableText(
-                              'macremote pair',
+                              'uniai pair',
                               style: TextStyle(fontFamily: mono, fontSize: 16, color: C.green),
                             ),
                             SizedBox(height: 8),

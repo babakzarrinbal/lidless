@@ -7,10 +7,10 @@ Working rules and commands: [AGENTS.md](../AGENTS.md).
 ## The pieces
 
 ```
- phone app ──WSS──▶ relay ◀──WSS── agent (macremote serve, LaunchAgent)
+ phone app ──WSS──▶ relay ◀──WSS── agent (uniai serve, LaunchAgent)
    └──────── Noise_IK, end to end ───────┘     │ unix sockets
                                                ▼
- laptop window ── macremote attach ──▶ holders (macremote hold, one per terminal)
+ laptop window ── uniai attach ──▶ holders (uniai hold, one per terminal)
                                                │ pty
                                                ▼
                                      login shell → claude / copilot / …
@@ -19,9 +19,9 @@ Working rules and commands: [AGENTS.md](../AGENTS.md).
 | Process | Code | Lives | Job |
 |---|---|---|---|
 | relay | `cmd/relay` | Docker on the server | Pairs a phone socket with its Mac's socket (same room). Sees only ciphertext. |
-| agent | `cmd/macremote` `serve` | LaunchAgent or brew service, one per Mac (`lock.go`) | Dials the relay, authenticates phones (Noise static keys), serves RPCs: terminals, files, chat transcripts, status. |
-| holder | `cmd/macremote` `hold` (`hold.go`) | One per terminal, own session (setsid), outlives the agent | Owns the pty and the shell, keeps the last 1–2 MiB of output, serves any number of clients on a unix socket. |
-| laptop CLI | `attach.go` | A Terminal window on the Mac | `macremote claude`, `attach`, `ls`, `kill`. A holder client like the agent. |
+| agent | `cmd/uniai` `serve` | LaunchAgent or brew service, one per Mac (`lock.go`) | Dials the relay, authenticates phones (Noise static keys), serves RPCs: terminals, files, chat transcripts, status. |
+| holder | `cmd/uniai` `hold` (`hold.go`) | One per terminal, own session (setsid), outlives the agent | Owns the pty and the shell, keeps the last 1–2 MiB of output, serves any number of clients on a unix socket. |
+| laptop CLI | `attach.go` | A Terminal window on the Mac | `uniai claude`, `attach`, `ls`, `kill`. A holder client like the agent. |
 | app | `app/` (Flutter) | The phones | Tabs per terminal, grouped into sessions; chat view from transcripts; files; editor. |
 
 ## One terminal, every device
@@ -29,12 +29,12 @@ Working rules and commands: [AGENTS.md](../AGENTS.md).
 The holder is the terminal. Everything else is a window onto it:
 
 - **The agent** connects to every holder (it finds them in
-  `~/.config/macremote/terms/<id>.sock`, scanning every second) and mirrors
+  `~/.config/uniai/terms/<id>.sock`, scanning every second) and mirrors
   each one's output into its own ring. Phones talk to the agent only.
 - **A phone** lists terminals (`term.list`), attaches from the byte offset it
   has seen (`term.attach`), and gets output as `'O'` frames carrying the offset,
   so a reconnect resumes without gaps or repeats.
-- **A laptop window** (`macremote attach <id>` or `macremote claude`) connects
+- **A laptop window** (`uniai attach <id>` or `uniai claude`) connects
   to the holder directly.
 
 Consequences:
@@ -42,15 +42,15 @@ Consequences:
 - Opening a session anywhere makes it visible everywhere. There is nothing to
   "move": the agent sends `{"ev":"terms"}` to every phone when a terminal comes
   or goes, and phones adopt new ones live (`Terms._refresh` in
-  `app/lib/model/terms.dart`). A laptop sees them with `macremote ls`.
+  `app/lib/model/terms.dart`). A laptop sees them with `uniai ls`.
 - Input from any client goes to the same pty. Everyone sees the same screen.
 - Restarting or upgrading the agent (`agent-install`, `brew upgrade`) does not
   end terminals. The new agent re-adopts the holders. The plist sets
   `AbandonProcessGroup` and holders run in their own session, so launchd does
   not take them down with the agent.
 - A terminal ends only when its shell exits: `exit`, quitting the `claude` it
-  was started for (`macremote claude` types `claude …; exit`), closing it on a
-  phone (`term.close`), `macremote kill <id>`, or a SIGTERM to the holder. Its
+  was started for (`uniai claude` types `claude …; exit`), closing it on a
+  phone (`term.close`), `uniai kill <id>`, or a SIGTERM to the holder. Its
   clients then get `'x'` with the exit code, and the socket is removed.
 
 ### Size policy
@@ -91,14 +91,14 @@ A terminal id is a random u32 (1..2³¹−1) that no socket uses yet. It is also
 the phone's tab id. A **session** is a string tag (`session`) shared by one
 agent terminal (`kind` `claude`/`copilot`, or `cli`) and any number of shells
 (`kind` `shell`). The phone groups tabs into sessions by that tag. A terminal
-without one is not shown on phones (`macremote claude` always sets one).
+without one is not shown on phones (`uniai claude` always sets one).
 
 ## Claude and Copilot
 
-- `macremote claude [args]` (and `copilot`) runs the agent CLI in a new holder
-  and attaches this window. `macremote shell-setup` aliases `claude` and
+- `uniai claude [args]` (and `copilot`) runs the agent CLI in a new holder
+  and attaches this window. `uniai shell-setup` aliases `claude` and
   `copilot` to it in `~/.zshrc`, so typing `claude` on the Mac is shared by
-  default. Inside a holder (`MACREMOTE_TERM` is set), or without a TTY, the
+  default. Inside a holder (`UNIAI_TERM` is set), or without a TTY, the
   alias runs the real CLI.
 - Resuming a conversation that already runs in a holder (`--resume <id>`,
   `-c`) joins that terminal instead of starting a second Claude. Two Claudes on
@@ -170,13 +170,13 @@ offset. The traps, and what handles each one:
 ## Working on it
 
 - **Go:** only in Docker: `./dev.sh go-check`, `./dev.sh go test -run X
-  ./cmd/macremote`, `./dev.sh agent` (builds `bin/macremote`).
+  ./cmd/uniai`, `./dev.sh agent` (builds `bin/uniai`).
   `hold_test.go` drives a holder over pipes.
 - **Try holders without touching the live agent:** everything keys off `$HOME`
   (config, sockets, log). Use a scratch `HOME` with a short path: unix socket
-  paths max out at 104 bytes on macOS. Run `macremote init -relay
-  127.0.0.1:9 -pin <64 zeros>`, then `macremote serve` (logs to stderr) and
-  `macremote hold -id 77 -dir … -run 'echo hi'`.
+  paths max out at 104 bytes on macOS. Run `uniai init -relay
+  127.0.0.1:9 -pin <64 zeros>`, then `uniai serve` (logs to stderr) and
+  `uniai hold -id 77 -dir … -run 'echo hi'`.
 - **App:** `./dev.sh app-analyze`, `./dev.sh app-test`. `test/sync_test.dart`
   covers the shared-terminal sync, and `FakeLink.macEvents` injects agent
   events.
@@ -184,6 +184,6 @@ offset. The traps, and what handles each one:
   keeps holder terminals. The one exception is the first switch from a
   pre-holder agent: its terminals lived inside the old agent and end with it,
   including a Claude driving this repo from a phone. `install` restarts the
-  agent from a detached `macremote reload` (own session, logs to the agent
+  agent from a detached `uniai reload` (own session, logs to the agent
   log), so running it from a phone's terminal cannot leave the Mac without an
   agent.

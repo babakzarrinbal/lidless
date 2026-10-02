@@ -7,8 +7,8 @@ check with `./dev.sh doctor`.
 
 ```bash
 mkdir -p ~/Projects && cd ~/Projects
-git clone git@github.com:babakzarrinbal/lidless.git mac-remote
-cd mac-remote
+git clone git@github.com:babakzarrinbal/uniai.git
+cd uniai
 ```
 
 ## 2. Toolchain
@@ -44,7 +44,7 @@ their contents anywhere.
 the server's `authorized_keys`. Run this on the **old Mac**, after copying the
 new Mac's `~/.ssh/id_ed25519.pub` over as `new.pub`:
 ```bash
-cd ~/Projects/mac-remote && . ./.server.env && ssh root@$RELAY_HOST 'cat >> ~/.ssh/authorized_keys' < new.pub
+cd ~/Projects/uniai && . ./.server.env && ssh root@$RELAY_HOST 'cat >> ~/.ssh/authorized_keys' < new.pub
 ```
 
 ## 4. Check
@@ -72,11 +72,11 @@ A Mac set up with brew already runs the released agent as a brew service.
 That is enough for working on the app. To run the agent built from this
 checkout instead, stop the brew service first, because only one copy may run:
 ```bash
-brew services stop macremote
+brew services stop uniai
 ./dev.sh agent-install
 ```
-The config in `~/.config/macremote/` is shared, so paired phones stay paired.
+The config in `~/.config/uniai/` is shared, so paired phones stay paired.
 To go back:
 ```bash
-macremote uninstall && brew services start macremote
+uniai uninstall && brew services start uniai
 ```

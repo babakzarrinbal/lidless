@@ -1,20 +1,20 @@
-// Command macremote is the Mac side of Mac Remote: it keeps an outbound
+// Command uniai is the Mac side of bz-uniai: it keeps an outbound
 // connection to the relay and serves terminals and files to paired phones
 // over an end-to-end encrypted Noise IK channel.
 //
-//	macremote setup host:port [-pin <sha256>]       set up, start, pair: all a new Mac needs
-//	macremote init -relay host:port -pin <sha256>   create keys and config only
-//	macremote pair [-code] [-png file]              pair a phone (QR, 10 min)
-//	macremote devices                               list paired phones
-//	macremote revoke <n|name>                       remove a phone
-//	macremote install | uninstall                   LaunchAgent (starts at login)
-//	macremote status                                config + agent state
-//	macremote serve                                 run in the foreground
-//	macremote ls                                    the Mac's shared terminals
-//	macremote attach [id|folder]                    join one in this window (Ctrl-] leaves it)
-//	macremote kill <id>                             end one on every device
-//	macremote claude|copilot [args]                 start (or join) one, shared with the phones
-//	macremote shell-setup                           alias claude/copilot to the above in ~/.zshrc
+//	uniai setup host:port [-pin <sha256>]       set up, start, pair: all a new Mac needs
+//	uniai init -relay host:port -pin <sha256>   create keys and config only
+//	uniai pair [-code] [-png file]              pair a phone (QR, 10 min)
+//	uniai devices                               list paired phones
+//	uniai revoke <n|name>                       remove a phone
+//	uniai install | uninstall                   LaunchAgent (starts at login)
+//	uniai status                                config + agent state
+//	uniai serve                                 run in the foreground
+//	uniai ls                                    the Mac's shared terminals
+//	uniai attach [id|folder]                    join one in this window (Ctrl-] leaves it)
+//	uniai kill <id>                             end one on every device
+//	uniai claude|copilot [args]                 start (or join) one, shared with the phones
+//	uniai shell-setup                           alias claude/copilot to the above in ~/.zshrc
 package main
 
 import (
@@ -35,16 +35,16 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-const label = "org.zarrinbal.macremote"
+const label = "org.zarrinbal.uniai"
 
 func die(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "macremote: "+format+"\n", a...)
+	fmt.Fprintf(os.Stderr, "uniai: "+format+"\n", a...)
 	os.Exit(1)
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: macremote setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls [--json]|attach|kill|claude|copilot|shell-setup|vscode")
+		fmt.Fprintln(os.Stderr, "usage: uniai setup|init|pair|devices|revoke|install|uninstall|status|serve|statusline [install]|usage|ls [--json]|attach|kill|claude|copilot|shell-setup|vscode")
 		os.Exit(2)
 	}
 	args := os.Args[2:]
@@ -137,6 +137,9 @@ func cmdPair(args []string) {
 	png := fs.String("png", "", "also write the QR code to this PNG file")
 	fs.Parse(args)
 	c, err := loadConfig()
+	if err == nil && c.Relay == "" {
+		err = errNotSetUp
+	}
 	if err != nil {
 		die("%v", err)
 	}
@@ -160,7 +163,7 @@ func cmdPair(args []string) {
 		}
 	}
 	fmt.Print(q.ToSmallString(false))
-	fmt.Println("\nScan this in Mac Remote on the phone (valid 10 minutes, one phone).")
+	fmt.Println("\nScan this in bz-uniai on the phone (valid 10 minutes, one phone).")
 	before := len(c.Devices)
 	for time.Now().Before(p.Expires) {
 		time.Sleep(time.Second)
@@ -188,7 +191,7 @@ func cmdDevices() {
 
 func cmdRevoke(args []string) {
 	if len(args) != 1 {
-		die("usage: macremote revoke <n|name>")
+		die("usage: uniai revoke <n|name>")
 	}
 	c, err := loadConfig()
 	if err != nil {
@@ -205,7 +208,7 @@ func cmdRevoke(args []string) {
 		}
 	}
 	if idx < 0 {
-		die("no such phone; see `macremote devices`")
+		die("no such phone; see `uniai devices`")
 	}
 	name := c.Devices[idx].Name
 	c.Devices = append(c.Devices[:idx], c.Devices[idx+1:]...)
@@ -217,7 +220,7 @@ func cmdRevoke(args []string) {
 
 func supportDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "Application Support", "MacRemote")
+	return filepath.Join(home, "Library", "Application Support", "Uniai")
 }
 
 func plistPath() string {
@@ -227,7 +230,7 @@ func plistPath() string {
 
 func logPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "Logs", "macremote.log")
+	return filepath.Join(home, "Library", "Logs", "uniai.log")
 }
 
 func copyFile(src, dst string) error {
@@ -262,7 +265,7 @@ func launchctl(args ...string) error {
 func domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
 
 func cmdInstall() {
-	if _, err := loadConfig(); err != nil {
+	if _, err := ensureConfig(); err != nil {
 		die("%v", err)
 	}
 	if brewServiceLoaded() {
@@ -275,7 +278,7 @@ func cmdInstall() {
 	if err := os.MkdirAll(supportDir(), 0o700); err != nil {
 		die("%v", err)
 	}
-	bin := filepath.Join(supportDir(), "macremote")
+	bin := filepath.Join(supportDir(), "uniai")
 	if exe != bin {
 		if err := copyFile(exe, bin); err != nil {
 			die("%v", err)
@@ -344,11 +347,15 @@ func cmdStatus() {
 	if err != nil {
 		die("%v", err)
 	}
-	fmt.Printf("relay   %s\nphones  %d\nroots   %s\n", c.Relay, len(c.Devices), strings.Join(c.Roots, ", "))
+	relay := c.Relay
+	if relay == "" {
+		relay = "none (this Mac's app only; `uniai setup` adds one)"
+	}
+	fmt.Printf("relay   %s\nphones  %d\nroots   %s\n", relay, len(c.Devices), strings.Join(c.Roots, ", "))
 	la, bs := launchctl("print", domain()+"/"+label) == nil, brewServiceLoaded()
 	switch {
 	case la && bs:
-		fmt.Println("agent   TWO copies (LaunchAgent and brew service): they knock each other off the relay.\n        Keep one: `macremote uninstall`, then `brew services restart macremote`")
+		fmt.Println("agent   TWO copies (LaunchAgent and brew service): they knock each other off the relay.\n        Keep one: `uniai uninstall`, then `brew services restart uniai`")
 	case la:
 		fmt.Println("agent   running (LaunchAgent)")
 	case bs:
@@ -358,24 +365,9 @@ func cmdStatus() {
 	}
 }
 
-// waitConfig reads the config. A service started before `macremote setup`
-// (brew services start) waits for it instead of exiting and being restarted
-// over and over.
-func waitConfig() (*Config, error) {
-	c, err := loadConfig()
-	if err == errNotSetUp {
-		logf("%v; waiting for it", err)
-	}
-	for err == errNotSetUp {
-		time.Sleep(5 * time.Second)
-		c, err = loadConfig()
-	}
-	return c, err
-}
-
 func cmdServe() {
 	holdAgentLock()
-	c, err := waitConfig()
+	c, err := ensureConfig()
 	if err != nil {
 		die("%v", err)
 	}
@@ -410,6 +402,10 @@ func cmdServe() {
 			a.reload()
 		}
 	}()
-	logf("macremote serving %q, %d paired phone(s)", a.host, len(c.Devices))
+	go a.serveLocal()
+	if c.Relay == "" {
+		logf("no relay set: serving only this Mac's app until `uniai setup`")
+	}
+	logf("uniai serving %q, %d paired phone(s)", a.host, len(c.Devices))
 	a.run()
 }

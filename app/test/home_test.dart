@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:macremote/crypto/noise.dart';
-import 'package:macremote/model/terms.dart';
-import 'package:macremote/net/link.dart';
-import 'package:macremote/net/store.dart';
-import 'package:macremote/ui/home.dart';
+import 'package:uniai/crypto/noise.dart';
+import 'package:uniai/model/terms.dart';
+import 'package:uniai/net/link.dart';
+import 'package:uniai/net/store.dart';
+import 'package:uniai/ui/home.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A Mac that answers from a table, already connected.

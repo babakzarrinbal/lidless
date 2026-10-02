@@ -26,8 +26,8 @@ func main() {
 	is, ie, rs, re := key(1), key(2), key(3), key(4)
 	// The "e" token always draws a fresh keypair from Random, so the seeds go there.
 	seed := func(b byte) *bytes.Reader { return bytes.NewReader(bytes.Repeat([]byte{b}, 32)) }
-	ini, _ := noise.NewHandshakeState(noise.Config{CipherSuite: suite, Random: seed(2), Pattern: noise.HandshakeIK, Initiator: true, Prologue: []byte("macremote/1"), StaticKeypair: is, PeerStatic: rs.Public})
-	res, _ := noise.NewHandshakeState(noise.Config{CipherSuite: suite, Random: seed(4), Pattern: noise.HandshakeIK, Prologue: []byte("macremote/1"), StaticKeypair: rs})
+	ini, _ := noise.NewHandshakeState(noise.Config{CipherSuite: suite, Random: seed(2), Pattern: noise.HandshakeIK, Initiator: true, Prologue: []byte("uniai/1"), StaticKeypair: is, PeerStatic: rs.Public})
+	res, _ := noise.NewHandshakeState(noise.Config{CipherSuite: suite, Random: seed(4), Pattern: noise.HandshakeIK, Prologue: []byte("uniai/1"), StaticKeypair: rs})
 
 	p1 := []byte(`{"v":1,"name":"test"}`)
 	m1, _, _, err := ini.WriteMessage(nil, p1)

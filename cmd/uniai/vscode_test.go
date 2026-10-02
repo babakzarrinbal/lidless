@@ -111,7 +111,7 @@ func TestVSCodeMirror(t *testing.T) {
 		t.Fatal(err)
 	}
 	reqs := vscodeRequests(m)
-	if len(reqs) != 3 || reqs[2]["requestId"] != "request_lidless-7-1" || vscodeTyped(reqs[2]) != "go on" ||
+	if len(reqs) != 3 || reqs[2]["requestId"] != "request_uniai-7-1" || vscodeTyped(reqs[2]) != "go on" ||
 		vscodeAnswer(reqs[2]) != turns[1].Answer || reqs[2]["modelId"] != "copilot/auto" {
 		t.Fatalf("requests: %+v", reqs)
 	}

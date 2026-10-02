@@ -121,7 +121,7 @@ class _MacsPageState extends State<MacsPage> {
         ListTile(
           leading: const Icon(Icons.add_link_rounded, color: C.accent),
           title: const Text('Pair another Mac'),
-          subtitle: const Text('Run `macremote pair` on it and scan the code'),
+          subtitle: const Text('Run `uniai pair` on it and scan the code'),
           onTap: () {
             Navigator.pop(context);
             widget.onAdd();
@@ -175,7 +175,7 @@ class _MacsPageState extends State<MacsPage> {
     if (_shellsBusy) {
       sub = 'Asking the Mac…';
     } else if (_shellsOld) {
-      sub = 'Update bz-uniai on the Mac to choose (brew upgrade macremote, then brew services restart macremote)';
+      sub = 'Update bz-uniai on the Mac to choose (brew upgrade uniai, then brew services restart uniai)';
     } else if (i == null) {
       sub = 'Couldn\'t ask the Mac · tap to retry';
       tap = _loadShells;

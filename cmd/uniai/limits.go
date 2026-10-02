@@ -85,7 +85,7 @@ func askClaudeLimits() map[string]any {
 		return nil
 	}
 	defer func() { in.Close(); cmd.Process.Kill(); cmd.Wait() }()
-	in.Write([]byte(`{"type":"control_request","request_id":"macremote-usage","request":{"subtype":"get_usage"}}` + "\n"))
+	in.Write([]byte(`{"type":"control_request","request_id":"uniai-usage","request":{"subtype":"get_usage"}}` + "\n"))
 	sc := bufio.NewScanner(out)
 	sc.Buffer(make([]byte, 64<<10), 8<<20)
 	for sc.Scan() {
@@ -96,7 +96,7 @@ func askClaudeLimits() map[string]any {
 				Response json.RawMessage `json:"response"`
 			} `json:"response"`
 		}
-		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Type != "control_response" || m.Response.ID != "macremote-usage" {
+		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Type != "control_response" || m.Response.ID != "uniai-usage" {
 			continue
 		}
 		return parseClaudeLimits(m.Response.Response)

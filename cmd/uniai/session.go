@@ -23,7 +23,7 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/websocket"
 
-	"macremote/internal/plugin"
+	"uniai/internal/plugin"
 )
 
 // Wire format, inside Noise transport messages:
@@ -34,7 +34,7 @@ import (
 //	  'O' term output  [id u32][offset u64][bytes]   mac → phone
 //	  'I' term input   [id u32][bytes]               phone → mac
 const (
-	prologue  = "macremote/1"
+	prologue  = "uniai/1"
 	chunkMax  = 60000
 	maxMsg    = 16 << 20
 	readLimit = 256 << 10
@@ -94,7 +94,7 @@ func (a *Agent) reload() {
 	a.cfg, a.cfgMtime = c, st.ModTime()
 	var drop []*Session
 	for s := range a.sessions {
-		if c.device(s.pub) == nil {
+		if !s.local && c.device(s.pub) == nil {
 			drop = append(drop, s)
 		}
 	}
@@ -142,10 +142,15 @@ func (a *Agent) url(path string, extra url.Values) string {
 	return "wss://" + c.Relay + path + "?" + q.Encode()
 }
 
-// run keeps the control connection to the relay up forever.
+// run keeps the control connection to the relay up forever. Without a relay
+// (no `uniai setup` yet) this Mac serves only its own app.
 func (a *Agent) run() {
 	backoff := time.Second
 	for {
+		if a.config().Relay == "" {
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		c, _, err := a.dialer().Dial(a.url("/v1/agent", nil), a.agentHeader())
 		if err != nil {
 			logf("relay: %v (retry in %s)", err, backoff)
@@ -196,7 +201,7 @@ type hello struct {
 }
 
 // authorize decides whether the phone holding pub may in. A phone that is not
-// listed gets in only with the one-time token from `macremote pair`.
+// listed gets in only with the one-time token from `uniai pair`.
 func (a *Agent) authorize(pub string, h hello) (string, error) {
 	a.reload()
 	c := a.config()
@@ -210,13 +215,13 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	// racing with the same code cannot both get in. A wrong code puts it back.
 	claimed := pairingPath() + ".claimed"
 	if err := os.Rename(pairingPath(), claimed); err != nil {
-		return "", errors.New("pairing code expired or already used; run `macremote pair` again")
+		return "", errors.New("pairing code expired or already used; run `uniai pair` again")
 	}
 	var p Pairing
 	b, err := os.ReadFile(claimed)
 	if err != nil || json.Unmarshal(b, &p) != nil || time.Now().After(p.Expires) {
 		os.Remove(claimed)
-		return "", errors.New("pairing code expired; run `macremote pair` again")
+		return "", errors.New("pairing code expired; run `uniai pair` again")
 	}
 	if subtle.ConstantTimeCompare([]byte(p.Token), []byte(h.Pair)) != 1 {
 		os.Rename(claimed, pairingPath())
@@ -239,14 +244,26 @@ func (a *Agent) authorize(pub string, h hello) (string, error) {
 	return name, nil
 }
 
+// sealer is a Noise cipher state, or plain for this Mac's own app.
+type sealer interface {
+	Encrypt(out, ad, plaintext []byte) ([]byte, error)
+	Decrypt(out, ad, ciphertext []byte) ([]byte, error)
+}
+
+type plain struct{}
+
+func (plain) Encrypt(out, _, p []byte) ([]byte, error) { return append(out, p...), nil }
+func (plain) Decrypt(out, _, c []byte) ([]byte, error) { return append(out, c...), nil }
+
 type Session struct {
 	a       *Agent
 	ws      *websocket.Conn
 	ip      string
 	device  string
 	pub     string
-	send    *noise.CipherState
-	recv    *noise.CipherState
+	local   bool // this Mac's own app, over the local socket
+	send    sealer
+	recv    sealer
 	out     chan []byte
 	done    chan struct{}
 	once    sync.Once
@@ -292,9 +309,7 @@ func (s *Session) serve() {
 	if authErr != nil {
 		reply["err"] = authErr.Error()
 	} else {
-		u, _ := user.Current()
-		home, _ := os.UserHomeDir()
-		reply["user"], reply["home"], reply["roots"] = u.Username, home, cfg.Roots
+		reply = s.a.welcome()
 	}
 	rb, _ := json.Marshal(reply)
 	m2, csIn, csOut, err := hs.WriteMessage(nil, rb)
@@ -312,6 +327,18 @@ func (s *Session) serve() {
 	}
 	s.device, s.recv, s.send = name, csIn, csOut
 	logf("connected: %s from %s", s.device, s.ip)
+	s.run()
+}
+
+// welcome is what a device learns about this Mac once it is let in.
+func (a *Agent) welcome() map[string]any {
+	u, _ := user.Current()
+	home, _ := os.UserHomeDir()
+	return map[string]any{"v": 1, "host": a.host, "user": u.Username, "home": home, "roots": a.config().Roots}
+}
+
+// run serves app messages until the device goes.
+func (s *Session) run() {
 	s.a.mu.Lock()
 	s.a.sessions[s] = struct{}{}
 	s.a.mu.Unlock()

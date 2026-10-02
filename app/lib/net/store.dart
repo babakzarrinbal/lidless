@@ -43,7 +43,7 @@ class MacPairing {
   static MacPairing parse(String code) {
     var s = code.trim();
     final i = s.indexOf('mr1.');
-    if (i < 0) throw const FormatException('not a Mac Remote pairing code');
+    if (i < 0) throw const FormatException('not a bz-uniai pairing code');
     s = s.substring(i + 4).split(RegExp(r'[\s/?#]')).first;
     final m = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(s))))
         as Map<String, dynamic>;

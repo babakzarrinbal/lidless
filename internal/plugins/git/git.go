@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"macremote/internal/plugin"
+	"uniai/internal/plugin"
 )
 
 const (
