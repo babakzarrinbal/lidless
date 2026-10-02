@@ -181,6 +181,22 @@ func ChatRecent(terms []*Terminal, n int, keep func(dir string) bool) []Conversa
 	return MergeConversations(claude, CopilotConversations(terms, n, func(c *Conversation) bool { return keep(c.Dir) }), n)
 }
 
+// claudeFile is a conversation's transcript. Resumed in another folder,
+// Claude keeps writing the one it has and may leave a few lines of metadata
+// under the new folder's name too: the biggest file is the conversation.
+func claudeFile(id string) string {
+	home, _ := os.UserHomeDir()
+	m, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", id+".jsonl"))
+	var best string
+	var size int64 = -1
+	for _, f := range m {
+		if st, err := os.Stat(f); err == nil && st.Size() > size {
+			best, size = f, st.Size()
+		}
+	}
+	return best
+}
+
 // transcriptCwd is the folder Claude ran in, from the transcript's first
 // lines (the project directory's name loses it: "/" and "." both become "-").
 func transcriptCwd(path string) string {
@@ -207,12 +223,20 @@ func transcriptCwd(path string) string {
 func conversations(files []string, terms []*Terminal, n int, keep func(*Conversation) bool) []Conversation {
 	running := ClaudeRunning()
 	list := []Conversation{}
+	at := map[string]int{} // one per id: the biggest file (claudeFile)
 	for _, f := range files {
 		st, err := os.Stat(f)
 		if err != nil || st.Size() == 0 {
 			continue
 		}
 		c := Conversation{ID: strings.TrimSuffix(filepath.Base(f), ".jsonl"), Mtime: st.ModTime().Unix(), Size: st.Size(), path: f}
+		if i, ok := at[c.ID]; ok {
+			if c.Size > list[i].Size {
+				list[i] = c
+			}
+			continue
+		}
+		at[c.ID] = len(list)
 		list = append(list, c)
 	}
 	sortConversations(list)

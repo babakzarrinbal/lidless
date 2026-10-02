@@ -65,9 +65,8 @@ func claudeTranscript(pid int) string {
 		if json.Unmarshal(b, &s) != nil || s.SessionID == "" || strings.ContainsAny(s.SessionID, "/.") {
 			continue
 		}
-		m, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", s.SessionID+".jsonl"))
-		if len(m) > 0 {
-			return m[0]
+		if p := claudeFile(s.SessionID); p != "" {
+			return p
 		}
 	}
 	return ""

@@ -30,6 +30,29 @@ func TestChatRecentAcrossFolders(t *testing.T) {
 	}
 }
 
+// Moved into a shared terminal in another folder, a conversation can leave
+// a few lines of metadata there under the same id: the chat and the lists
+// read the real transcript.
+func TestClaudeFileSkipsStub(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	write := func(dir, body string) string {
+		p := filepath.Join(ClaudeProjectDir(dir), "s1.jsonl")
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(body), 0o600)
+		return p
+	}
+	stub := write("/a", `{"type":"last-prompt","lastPrompt":"hi"}`+"\n") // sorts first
+	real := write("/b", `{"type":"user","cwd":"/b","message":{"role":"user","content":"the whole chat"}}`+"\n")
+	if got := claudeFile("s1"); got != real {
+		t.Fatalf("read %s, not %s", got, real)
+	}
+	got := conversations([]string{stub, real}, nil, 10, nil)
+	if len(got) != 1 || got[0].path != real {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestLineContext(t *testing.T) {
 	c := lineContext([]byte(`{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":4470,"cache_read_input_tokens":123412,"output_tokens":3650}}}`))
 	if c == nil || c.Tokens != 127884 || c.Model != "claude-opus-5-5" {
