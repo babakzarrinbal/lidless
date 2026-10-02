@@ -3,7 +3,8 @@
 CLAUDE.md imports this file. Read README.md for what the product is,
 **docs/architecture.md for how it works** (holders, shared terminals, the
 protocols, the traps), docs/dev-setup.md to set up a new Mac, and
-docs/hosting.md for the relay.
+docs/hosting.md for the relay. **docs/native-app.md is where it is going**
+(native app on every platform, plugins, phases): new work follows its layout.
 
 **This repo is public.** Never commit the relay's address or IP, its
 certificate pin, keys, or tokens. Those live in untracked files (listed below).
