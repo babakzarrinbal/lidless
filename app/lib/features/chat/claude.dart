@@ -15,7 +15,7 @@ class Conversation {
         dir = m['dir'] as String? ?? '',
         tool = m['tool'] as String? ?? 'claude';
   final String id, title, prompt;
-  final String tool; // the agent that had it: claude, copilot, or vscode (read only)
+  final String tool; // the agent that had it: claude, copilot, or vscode (Move here hands it to Copilot)
   final String dir; // the folder (the recent list only)
   final DateTime mtime;
   final int size;

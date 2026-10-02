@@ -1,8 +1,8 @@
 // Package transcript reads and writes the AI tools' chat transcripts on this
 // Mac: Claude Code's (claude.go, chat.go), GitHub Copilot CLI's (copilot.go)
-// and VS Code Copilot Chat's (vscode.go), and carries a VS Code chat on in a
-// shared terminal and back (vscodemirror.go, with the embedded bz-uniai VS Code
-// extension in vscode-ext/). The phone's chat view (`chat.*` RPCs) is built
+// and VS Code Copilot Chat's (vscode.go, vscode_items.go), and hands a VS Code
+// chat to Copilot in a shared terminal ("Move here"). The phone's chat view
+// (`chat.*` RPCs) is built
 // on it. Overview: docs/architecture.md.
 package transcript
 

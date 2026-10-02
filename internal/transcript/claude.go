@@ -39,6 +39,7 @@ type Conversation struct {
 	Term    uint32 `json:"term,omitempty"`  // …in this agent's terminal
 	Dir     string `json:"dir,omitempty"`   // the folder it ran in (recent list only)
 	Model   string `json:"model,omitempty"` // a VS Code chat's last model
+	From    string `json:"from,omitempty"`  // a Copilot session's: the VS Code chat it carries on
 	path    string
 }
 
@@ -88,15 +89,15 @@ func StopClaude(sid string) error {
 	if !strings.Contains(strings.ToLower(string(out)), "claude") {
 		return errors.New("the process on that conversation is not Claude; quit it on the Mac")
 	}
-	if !QuitClaude(pid, 5*time.Second) {
+	if !QuitAgent(pid, 5*time.Second) {
 		return errors.New("Claude on the Mac is still running; quit it there")
 	}
 	return nil
 }
 
-// QuitClaude asks Claude to quit (it saves the conversation first) and waits
-// up to wait for it to go.
-func QuitClaude(pid int, wait time.Duration) bool {
+// QuitAgent asks Claude or Copilot to quit (SIGTERM: it saves the
+// conversation first) and waits up to wait for it to go.
+func QuitAgent(pid int, wait time.Duration) bool {
 	if syscall.Kill(pid, syscall.SIGTERM) != nil {
 		return syscall.Kill(pid, 0) == syscall.ESRCH
 	}

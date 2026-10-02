@@ -107,8 +107,10 @@ without one is not shown on phones (`uniai claude` always sets one).
   (`stopClaude`, it saves) and resumes in a holder.
 - The phone does the same when you pick a conversation. If it runs in a shared
   terminal, the phone shows that session. If it runs outside one, the phone
-  offers a single **Take over** (`chat.stop`, then resume in a new shared
-  terminal).
+  offers a single **Move here** (`chat.stop` quits that Claude or Copilot
+  CLI, which saves; then it resumes in a new shared terminal). A VS Code
+  Copilot Chat moves the same way: `chat.handoff` writes it out as markdown
+  and a Copilot CLI in a new shared terminal carries it on (`vscode.go`).
 - The chat view reads transcripts, not the screen:
   `~/.claude/projects/<folder>/<conversation>.jsonl` and
   `~/.copilot/session-state/<id>/events.jsonl` (`chat.go`, `claude.go`,

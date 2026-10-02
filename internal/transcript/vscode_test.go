@@ -28,16 +28,16 @@ func TestVSCodeChat(t *testing.T) {
 	os.WriteFile(filepath.Join(ws, "ChatSessions", "11111111-0000-0000-0000-000000000000.jsonl"),
 		[]byte(`{"kind":0,"v":{"requests":[]}}`+"\n"), 0o644) // nothing said: not listed
 
-	l := VSCodeConversations(10, func(c *Conversation) bool { return c.Dir == "/w/my app" })
-	if len(l) != 1 || l[0].ID != id || l[0].Tool != "vscode" || l[0].Title != "Build fix" || l[0].Prompt != "thanks" {
+	l := VSCodeConversations(nil, 10, func(c *Conversation) bool { return c.Dir == "/w/my app" })
+	if len(l) != 1 || l[0].ID != id || l[0].Tool != "vscode" || l[0].Title != "Build fix" || l[0].Prompt != "thanks" || l[0].Running {
 		t.Fatalf("list: %+v", l)
 	}
 	shared := func(string) bool { return true }
-	r, err := VSCodeTranscript(id, 0, 0, shared)
+	m, err := vscodeState(filepath.Join(ws, "ChatSessions", id+".jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	items := r["items"].([]ChatItem)
+	items := vscodeItems(m)
 	want := []ChatItem{
 		{K: "user", Text: "fix the build"},
 		{K: "text", Text: "Looking at it."},
@@ -57,9 +57,6 @@ func TestVSCodeChat(t *testing.T) {
 			t.Errorf("item %d: %+v, want %+v", i, items[i], want[i])
 		}
 	}
-	if again, _ := VSCodeTranscript(id, r["size"].(int64), r["mtime"].(int64), shared); again["same"] != true {
-		t.Errorf("unchanged file read again: %v", again)
-	}
 	h, err := VSCodeHandoff(id, shared)
 	if err != nil {
 		t.Fatal(err)
@@ -73,63 +70,35 @@ func TestVSCodeChat(t *testing.T) {
 	if !strings.Contains(h["prompt"].(string), h["path"].(string)) {
 		t.Errorf("prompt: %v", h["prompt"])
 	}
-	if _, err := VSCodeTranscript(id, 0, 0, func(string) bool { return false }); err == nil {
-		t.Error("a chat outside the shared folders was read")
+	if _, err := VSCodeHandoff(id, func(string) bool { return false }); err == nil {
+		t.Error("a chat outside the shared folders was handed off")
+	}
+
+	// Moved here: the terminal Copilot carries it on in has it.
+	terms := []*Terminal{{ID: 4, Run: "copilot -i " + h["prompt"].(string)}}
+	if l := VSCodeConversations(terms, 10, nil); len(l) != 1 || !l[0].Running || l[0].Term != 4 {
+		t.Fatalf("carried: %+v", l)
+	}
+
+	// The Copilot session it started stands in for the chat.
+	cp := filepath.Join(home, ".copilot", "session-state", "7bc294a5-fb02-4f4d-9800-f06e9d77dde1")
+	os.MkdirAll(cp, 0o755)
+	os.WriteFile(filepath.Join(cp, "workspace.yaml"), []byte("cwd: /w/my app\n"), 0o644)
+	os.WriteFile(filepath.Join(cp, "events.jsonl"), []byte(`{"type":"user.message","data":{"content":"`+h["prompt"].(string)+`"}}`+"\n"), 0o644)
+	all := WithVSCode(CopilotConversations(nil, 10, nil), nil, 10, nil)
+	if len(all) != 1 || all[0].Tool != "copilot" || all[0].From != id || all[0].Title != "Build fix" || all[0].Prompt != "" {
+		t.Fatalf("moved: %+v", all)
 	}
 }
 
-func TestVSCodeMirror(t *testing.T) {
+func TestVSCodeEmptyWindow(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	d := filepath.Join(home, "Library", "Application Support", "Code", "User", "globalStorage", "emptyWindowChatSessions")
+	os.MkdirAll(d, 0o755)
 	id := "0fb1b9c7-9892-48c1-996a-b6de7726603c"
-	path := filepath.Join(home, id+".jsonl")
-	// VS Code's last line may lack its newline yet.
-	os.WriteFile(path, []byte(`{"kind":0,"v":{"requests":[{"requestId":"request_1","modelId":"copilot/auto","message":{"text":"fix it"},"response":[{"value":"On it."}]}]}}`), 0o644)
-
-	items := []ChatItem{
-		{K: "user", Text: "This carries on a conversation … " + vscodeCache() + "/" + id + ".md, then …"},
-		{K: "text", Text: "We were fixing the build."},
-		{K: "user", Text: "go on"},
-		{K: "tool", ID: "a", Name: "Bash", Text: "go test"},
-		{K: "result", ID: "a", Text: "fail", Err: true},
-		{K: "text", Text: "Fixed."},
-	}
-	turns := vscodeTurns(items, id, "copilot")
-	if len(turns) != 2 || turns[0].Prompt != "Continue on all devices" || !strings.Contains(turns[0].Answer, "(Copilot CLI)") ||
-		!strings.HasSuffix(turns[0].Answer, "We were fixing the build.") {
-		t.Fatalf("turns: %+v", turns)
-	}
-	if want := "- *Bash* `go test` (failed: `fail`)\n\nFixed."; turns[1] != (vscodeTurn{"go on", want}) {
-		t.Fatalf("turn 2: %+v", turns[1])
-	}
-
-	if err := vscodeWriteTurns(path, id, 7, turns); err != nil {
-		t.Fatal(err)
-	}
-	m, err := vscodeState(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reqs := vscodeRequests(m)
-	if len(reqs) != 3 || reqs[2]["requestId"] != "request_uniai-7-1" || vscodeTyped(reqs[2]) != "go on" ||
-		vscodeAnswer(reqs[2]) != turns[1].Answer || reqs[2]["modelId"] != "copilot/auto" {
-		t.Fatalf("requests: %+v", reqs)
-	}
-	if _, err := os.Stat(filepath.Join(vscodeCache(), id+".jsonl.bak")); err != nil {
-		t.Error("no backup:", err)
-	}
-
-	st, _ := os.Stat(path)
-	if err := vscodeWriteTurns(path, id, 7, turns); err != nil {
-		t.Fatal(err)
-	}
-	if st2, _ := os.Stat(path); st2.Size() != st.Size() {
-		t.Error("the same turns were written again")
-	}
-	turns[1].Answer += "\n\nAll green."
-	vscodeWriteTurns(path, id, 7, turns)
-	m, _ = vscodeState(path)
-	if reqs = vscodeRequests(m); len(reqs) != 3 || vscodeAnswer(reqs[2]) != turns[1].Answer {
-		t.Fatalf("answer not updated: %+v", reqs)
+	os.WriteFile(filepath.Join(d, id+".json"), []byte(`{"requests":[{"message":{"text":"hi"},"response":[]}]}`), 0o644)
+	if l := VSCodeConversations(nil, 10, nil); len(l) != 1 || l[0].Dir != home || l[0].Title != "hi" {
+		t.Fatalf("list: %+v", l)
 	}
 }

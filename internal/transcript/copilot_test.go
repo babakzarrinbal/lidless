@@ -89,3 +89,32 @@ func TestCopilotCommand(t *testing.T) {
 		t.Fatalf("not copilot: got %q", got)
 	}
 }
+
+func TestCopilotCLIArgs(t *testing.T) {
+	for _, c := range []struct {
+		comm, args string
+		want       bool
+	}{
+		{"/opt/homebrew/bin/copilot", "/opt/homebrew/bin/copilot --resume x", true},
+		{"node", "node /usr/local/lib/node_modules/@github/copilot/index.js", true},
+		{"/Applications/Visual Studio Code.app/Contents/Resources/app/node_modules.asar.unpacked/@github/copilot-sdk-darwin-arm64/prebuilds/darwin-arm64/copilot-runtime",
+			"/Applications/Visual Studio Code.app/Contents/Resources/app/node_modules.asar.unpacked/@github/copilot-sdk-darwin-arm64/prebuilds/darwin-arm64/copilot-runtime --headless", false},
+		{"/Applications/Visual Studio Code.app/x/copilot", "/Applications/Visual Studio Code.app/x/copilot --headless", false},
+		{"node", "node ~/Library/Application Support/Code/User/globalStorage/github.copilot-chat/copilotCli/copilot", false},
+		{"zsh", "zsh -l", false},
+	} {
+		if got := copilotCLIArgs(c.comm, c.args); got != c.want {
+			t.Errorf("copilotCLIArgs(%q) = %v", c.args, got)
+		}
+	}
+}
+
+func TestStopCopilot(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if StopCopilot("../x") == nil {
+		t.Error("a bad id was taken")
+	}
+	if err := StopCopilot("7bc294a5-fb02-4f4d-9800-f06e9d77dde1"); err != nil {
+		t.Error("nothing holds it, so it is stopped already:", err)
+	}
+}

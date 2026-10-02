@@ -375,6 +375,3 @@ func (m *Terms) forChat() []*transcript.Terminal {
 	}
 	return out
 }
-
-// mirrorVSCode runs for the agent's life (transcript.MirrorVSCode).
-func (m *Terms) mirrorVSCode() { transcript.MirrorVSCode(m.forChat) }

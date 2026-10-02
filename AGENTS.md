@@ -46,7 +46,7 @@ module alone (`internal/holder`, `cmd/uniai`, `devices`, `app/test/x.dart`).
 |---|---|
 | `cmd/uniai/` | The core (Go agent) and its CLI: what needs the running agent. `wire.go`: transports (relay, local socket), Noise handshake, sessions; the wire format is its header comment. `rpc.go`: the method switch (`call`). `term.go`: adopts holders, mirrors their output, sends `{"ev":"terms"}`. `devices.go`: this Mac's paired phones (local session only). `local.go`: the unix socket for this Mac's own app. `attach.go`: laptop CLI (`ls`, `attach`, `kill`, `claude`/`copilot`, `shell-setup`). `plugins.go`, `shell.go`, `lock.go` (one agent per Mac), `lid.go`, `setup.go`, `main.go` (CLI, LaunchAgent). |
 | `internal/holder/` | The holder process that owns each terminal's pty and outlives the agent, and its socket protocol (docs/architecture.md, "Holder protocol"). |
-| `internal/transcript/` | Reading Claude, Copilot CLI and VS Code Copilot Chat transcripts (`chat.*`); the mirror back into VS Code and the embedded VS Code extension (`vscode-ext/`). |
+| `internal/transcript/` | Reading Claude, Copilot CLI and VS Code Copilot Chat transcripts (`chat.*`); quitting an outside Claude/Copilot and handing a VS Code chat to Copilot, so "Move here" carries it on in a shared terminal. |
 | `internal/usage/` | Context window, plan limits, the token ledger (`usage`, `tokens.reset`). |
 | `internal/{fsops,config,rpc,ulog,shellenv}/` | `fs.*` methods; agent.json and the config folder; RPC errors; log lines with a module prefix; the login shell's environment. |
 | `internal/plugin/`, `internal/plugins/` | The plugin registry (`plugins.list`) and the plugins (git). |
@@ -59,7 +59,7 @@ module alone (`internal/holder`, `cmd/uniai`, `devices`, `app/test/x.dart`).
 
 RPC methods (`cmd/uniai/rpc.go`, the switch in `call`): `term.*` (list, open, attach,
 detach, resize, seen, rename, close; park/unpark only for terminals an old app
-parked), `chat.*` (read, older, sessions, recent, commands, stop; transcript reads a VS Code Copilot Chat, listed only when the app passes `vscode: true`; handoff writes one out for Copilot/Claude in a shared terminal to carry on), `fs.*`,
+parked), `chat.*` (read, older, sessions, recent, commands, stop quits the Claude or Copilot that has a conversation outside a shared terminal; VS Code's chats are listed only when the app passes `vscode: true`, and handoff writes one out for Copilot in a shared terminal to carry on), `fs.*`,
 `shell.list`/`shell.set`, `sys.status`, `usage`, `tokens.reset`. Events:
 `terms` (a terminal came or went, on any device), `term.exit`, `term.size`
 (the pty was resized: the redraw that follows is not news), `term.seen` (a

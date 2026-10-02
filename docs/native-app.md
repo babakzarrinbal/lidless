@@ -25,7 +25,7 @@ Decided 2026-10-02:
   uniai.zarrinbal.org (a subdomain we own, so nothing to register).
   The `bz-` prefix keeps it apart from other "UniAI" products. Only what users see is renamed: the
   package `org.zarrinbal.uniai`, `~/.config/uniai`, the Noise prologue,
-  the LaunchAgent labels, the VS Code extension id (`zarrinbal.uniai`) and the
+  the LaunchAgent labels and the
   box's `/opt/uniai-site` keep their names, so pairings and installs survive.
 
 ## Shipping it publicly
@@ -127,7 +127,7 @@ split by feature. Each module has a README; `./dev.sh map` lists them.
 cmd/uniai          daemon + CLI: wire, rpc switch, terms, devices, local socket
 cmd/relay, cmd/noisevec
 internal/holder    the pty holder process and its protocol
-internal/transcript  Claude, Copilot, VS Code chat readers + VS Code mirror
+internal/transcript  Claude, Copilot, VS Code chat readers; Move here
 internal/usage     context, limits, token ledger
 internal/{fsops,config,rpc,ulog,shellenv}
 internal/plugin    registry: Method, Ctx, plugins.list

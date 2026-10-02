@@ -64,7 +64,7 @@ func (t *Term) park() (string, error) {
 	if pid == 0 {
 		return "", nil
 	}
-	if !transcript.QuitClaude(pid, 5*time.Second) {
+	if !transcript.QuitAgent(pid, 5*time.Second) {
 		return "", &rpcError{Code: "busy", Msg: "Claude on the Mac did not quit"}
 	}
 	t.mu.Lock()

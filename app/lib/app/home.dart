@@ -370,14 +370,17 @@ class _HomeState extends State<Home> {
   }
 
   // The sheet waits for the Mac's answer (usage can take seconds): one at a
-  // time, and the icon spins meanwhile so it's clear the tap was taken.
+  // time, and the icon spins until the sheet is up so it's clear the tap was
+  // taken.
   bool _statusBusy = false;
 
   Future<void> _statusSheet() async {
     if (_statusBusy) return;
     setState(() => _statusBusy = true);
     try {
-      await showMacStatus(context, link, _currentView);
+      await showMacStatus(context, link, _currentView, onShown: () {
+        if (mounted) setState(() => _statusBusy = false);
+      });
     } finally {
       if (mounted) setState(() => _statusBusy = false);
     }

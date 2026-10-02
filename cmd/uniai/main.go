@@ -35,7 +35,6 @@ import (
 	"uniai/internal/config"
 	"uniai/internal/holder"
 	"uniai/internal/rpc"
-	"uniai/internal/transcript"
 	"uniai/internal/ulog"
 	"uniai/internal/usage"
 )
@@ -95,8 +94,6 @@ func main() {
 		cmdAgentCLI(os.Args[1], args)
 	case "shell-setup":
 		cmdShellSetup(args)
-	case "vscode":
-		cmdVSCode(args)
 	default:
 		die("unknown command %q", os.Args[1])
 	}
@@ -380,7 +377,6 @@ func cmdServe() {
 	a.terms.onChange = a.termsChanged
 	a.terms.onEvent = a.termEvent
 	go a.terms.watch() // adopts the terminals that outlived the last agent
-	go a.terms.mirrorVSCode()
 	if c.KeepAwake {
 		// Prevent idle sleep for as long as this process lives.
 		cmd := exec.Command("caffeinate", "-i", "-w", strconv.Itoa(os.Getpid()))
@@ -402,13 +398,4 @@ func cmdServe() {
 	}
 	logf("uniai serving %q, %d paired phone(s)", a.host, len(c.Devices))
 	a.run()
-}
-
-// cmdVSCode installs the extension: `uniai vscode`.
-func cmdVSCode(args []string) {
-	msg, err := transcript.VSCodeExtInstall(len(args) > 0 && args[0] == "-force")
-	if err != nil {
-		die("%v", err)
-	}
-	fmt.Println(msg)
 }

@@ -34,7 +34,7 @@ const detachKey = 0x1d // Ctrl-]
 
 func cmdLs(args []string) {
 	l := holder.List()
-	if len(args) > 0 && args[0] == "--json" { // for the VS Code extension
+	if len(args) > 0 && args[0] == "--json" { // for scripts
 		if l == nil {
 			l = []holder.Info{}
 		}

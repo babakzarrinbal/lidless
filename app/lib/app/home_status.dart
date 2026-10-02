@@ -10,7 +10,9 @@ import 'package:uniai/net/link.dart';
 
 /// Shows the Mac's status sheet: usage and tokens, power, and the lid switch.
 /// [currentView] is the session on screen, where the lid command is typed.
-Future<void> showMacStatus(BuildContext context, Link link, SessionViewState? Function() currentView) async {
+/// [onShown] runs once the Mac answered and the sheet goes up.
+Future<void> showMacStatus(BuildContext context, Link link, SessionViewState? Function() currentView,
+    {VoidCallback? onShown}) async {
   Map? s;
   ClaudeUsage? usage;
   final u = link
@@ -35,6 +37,7 @@ Future<void> showMacStatus(BuildContext context, Link link, SessionViewState? Fu
   bool claudes(AccountTokens a) => a.tool == 'claude' && a.account == usage?.email;
   bool copilots(AccountTokens a) => a.tool == 'copilot' && a.account == usage?.copilot?.login;
   bool others(AccountTokens a) => !claudes(a) && !copilots(a);
+  onShown?.call();
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

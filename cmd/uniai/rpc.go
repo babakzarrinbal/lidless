@@ -153,7 +153,6 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		Take    bool   `json:"take"` // term.unpark: quit the Claude that has the conversation elsewhere
 		Shell   string `json:"shell"`
 		Seen    int64  `json:"seen"`
-		Size    int64  `json:"size"`
 		VSCode  bool   `json:"vscode"` // chat.sessions/recent: VS Code's chats too (an app that can show them)
 		Pub     string `json:"pub"`    // devices.*: the phone's key
 		Name    string `json:"name"`   // devices.rename
@@ -238,7 +237,7 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		go func() {
 			// Claude first, so it saves the conversation for whoever picks it up.
 			if pid != 0 {
-				transcript.QuitClaude(pid, 3*time.Second)
+				transcript.QuitAgent(pid, 3*time.Second)
 			}
 			t.hangup()
 		}()
@@ -279,9 +278,10 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		l, err := transcript.ChatSessions(dir, s.a.terms.forChat())
+		terms := s.a.terms.forChat()
+		l, err := transcript.ChatSessions(dir, terms)
 		if err == nil && p.VSCode {
-			l = transcript.MergeConversations(l, transcript.VSCodeConversations(transcript.ListMax, func(c *transcript.Conversation) bool { return c.Dir == dir }), transcript.ListMax)
+			l = transcript.WithVSCode(l, terms, transcript.ListMax, func(c *transcript.Conversation) bool { return c.Dir == dir })
 		}
 		return l, err
 	case "chat.recent":
@@ -289,24 +289,13 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 			_, err := fsops.Resolve(roots, dir)
 			return err == nil
 		}
-		l := transcript.ChatRecent(s.a.terms.forChat(), 40, shared)
+		terms := s.a.terms.forChat()
+		l := transcript.ChatRecent(terms, 40, shared)
 		if p.VSCode {
-			l = transcript.MergeConversations(l, transcript.VSCodeConversations(40, func(c *transcript.Conversation) bool { return shared(c.Dir) }), 40)
+			l = transcript.WithVSCode(l, terms, 40, func(c *transcript.Conversation) bool { return shared(c.Dir) })
 		}
 		return l, nil
-	case "chat.transcript": // a VS Code chat, read-only: {"same": true} while size and mtime still match
-		return transcript.VSCodeTranscript(p.Session, p.Size, p.Mtime, func(dir string) bool {
-			_, err := fsops.Resolve(roots, dir)
-			return err == nil
-		})
-	case "chat.handoff": // a VS Code chat written out for an agent in a shared terminal: {"path", "prompt"}
-		go func() { // so VS Code opens that terminal too (internal/transcript/vscodemirror.go)
-			if msg, err := transcript.VSCodeExtInstall(false); err != nil {
-				logf("vscode extension: %v", err)
-			} else if strings.HasPrefix(msg, "installed") {
-				logf("vscode extension: %s", msg)
-			}
-		}()
+	case "chat.handoff": // a VS Code chat written out for Copilot in a shared terminal to carry on: {"path", "prompt"}
 		return transcript.VSCodeHandoff(p.Session, func(dir string) bool {
 			_, err := fsops.Resolve(roots, dir)
 			return err == nil
@@ -316,11 +305,14 @@ func (s *Session) call(method string, raw json.RawMessage) (any, error) {
 		return transcript.ChatCommands(dir, p.Kind), nil
 	case "usage":
 		return usage.ClaudeUsage(), nil
-	case "chat.stop":
+	case "chat.stop": // "Move here": quit the Claude or Copilot that has it outside a shared terminal
 		if err := transcript.StopClaude(p.Session); err != nil {
 			return nil, err
 		}
-		logf("%s quit the Mac's Claude on conversation %s to take it over", s.device, p.Session)
+		if err := transcript.StopCopilot(p.Session); err != nil {
+			return nil, err
+		}
+		logf("%s quit the Mac's agent on conversation %s to move it into a shared terminal", s.device, p.Session)
 		return true, nil
 	case "tokens.reset":
 		if !usage.TokenLedger.Reset(p.Tool, p.Account) {

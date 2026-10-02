@@ -1,11 +1,11 @@
 // What the session pages ask of the Mac that needs a dialog or several
-// calls: run the agent again, resume or carry on a conversation, take over a
-// parked one, close a session. [Home] owns the one instance.
+// calls: run the agent again, resume a conversation or move it here from
+// outside the shared terminals (Claude, Copilot, VS Code's chats), take over
+// a parked one, close a session. [Home] owns the one instance.
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:uniai/features/workspaces/seen_conversations.dart';
-import 'package:uniai/features/chat/transcript_page.dart';
 import 'package:uniai/app/theme.dart';
 import 'package:uniai/features/chat/claude.dart';
 import 'package:uniai/features/terminals/session.dart';
@@ -51,54 +51,38 @@ class SessionFlows {
   /// that agent.
   Future<void> resumeIn(String dir, Conversation c, {String? flagsOf}) async {
     closeDrawer();
-    if (c.tool == 'vscode') {
-      // VS Code's chat can't be resumed in a terminal: the phone reads it.
-      Navigator.push(
-        state.context,
-        MaterialPageRoute(
-          builder: (_) => TranscriptPage(
-              link: link, id: c.id, title: c.title, dir: dir, onContinue: (tool) => _carryOn(dir, c, tool)),
-        ),
-      );
-      return;
-    }
     final here = terms.sessions.where((s) => c.term != 0 && s.agent?.id == c.term).firstOrNull;
     if (here != null) {
       select(here.id);
       return;
     }
+    if (c.tool == 'vscode') {
+      await _moveVSCode(dir, c);
+      return;
+    }
     // Running in a shared terminal it is a session here already (above); this
     // one runs outside them: an editor, or a terminal without the alias.
-    final name = tools[c.tool] ?? c.tool;
-    final canTake = c.tool == 'claude'; // chat.stop knows how to quit Claude only
     if (c.running) {
-      final how = await showDialog<String>(
+      final name = tools[c.tool] ?? c.tool;
+      final move = await showDialog<bool>(
         context: state.context,
         builder: (ctx) => AlertDialog(
           title: const Text('Open on the Mac'),
-          content: Text(canTake
-              ? 'Claude has this conversation open on the Mac outside a shared terminal (an editor, or a '
-                  'terminal without `uniai shell-setup`).\n\nTake over quits it (it saves first) and carries on '
-                  'in a shared terminal: here, on your other devices, and on the Mac with `uniai attach`.'
-              : '$name has this conversation open on the Mac outside a shared terminal. Opening it here too '
-                  'runs two copies, and neither sees the other\'s new messages.'),
+          content: Text('$name has this conversation open on the Mac outside bz-uniai (an editor, or a '
+              'terminal without `uniai shell-setup`).\n\nMove here quits it there (it saves first) and carries '
+              'on in a shared terminal: here, on your other devices, and on the Mac with `uniai attach`.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, canTake ? 'take' : 'both'),
-              child: Text(canTake ? 'Take over' : 'Open here too'),
-            ),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Move here')),
           ],
         ),
       );
-      if (how == null) return;
-      if (how == 'take') {
-        try {
-          await link.call('chat.stop', {'session': c.id}, const Duration(seconds: 15));
-        } on RpcError catch (e) {
-          if (state.mounted) toast(state.context, e.message, error: true);
-          return;
-        }
+      if (move != true) return;
+      try {
+        await link.call('chat.stop', {'session': c.id}, const Duration(seconds: 15));
+      } on RpcError catch (e) {
+        if (state.mounted) toast(state.context, e.message, error: true);
+        return;
       }
     }
     flagsOf ??= terms.sessions.where((s) => s.dir == dir && s.tool == c.tool).lastOrNull?.id;
@@ -112,29 +96,27 @@ class SessionFlows {
     }
   }
 
-  /// Carries a VS Code chat on with [tool] in a new shared session, which
-  /// reads the chat's transcript first. True once it started.
-  Future<bool> _carryOn(String dir, Conversation c, String tool) async {
+  /// Moves a VS Code chat here: Copilot carries it on in a new shared
+  /// session, reading the chat so far first. From then on that Copilot
+  /// session stands in for the chat in the lists (the agent's WithVSCode).
+  Future<void> _moveVSCode(String dir, Conversation c) async {
     try {
       final h = await link.call('chat.handoff', {'session': c.id}) as Map;
-      // The flags of the folder's newest session of that agent, without what resumed it.
-      final last = terms.sessions.where((s) => s.dir == dir && s.tool == tool).lastOrNull?.id;
+      // The flags of the folder's newest Copilot session, without what resumed it.
+      final last = terms.sessions.where((s) => s.dir == dir && s.tool == 'copilot').lastOrNull?.id;
       final base = continueFlags(prefs()?.getString('sessFlags.$last') ?? '').replaceFirst('--continue', '').trim();
       final path = h['path'] as String, prompt = shellQuote(h['prompt'] as String);
-      // Both agents may read the transcript's folder without asking. The
-      // prompt goes first: --add-dir takes every word after it as a folder.
+      // Copilot may read the transcript's folder without asking. The prompt
+      // goes first: --add-dir takes every word after it as a folder.
       final add = '--add-dir ${shellQuote(path.substring(0, path.lastIndexOf('/')))}';
-      final id = await terms.start(
-          dir, [if (tool == 'copilot') '-i', prompt, base, add].where((s) => s.isNotEmpty).join(' '),
-          tool: tool);
+      final id = await terms.start(dir, ['-i', prompt, base, add].where((s) => s.isNotEmpty).join(' '), tool: 'copilot');
       await prefs()?.setString('sessFlags.$id', base);
       if (state.mounted) select(id);
-      return true;
     } on RpcError catch (e) {
       if (state.mounted) {
-        toast(state.context, e.code == 'unknown' ? 'Update this Mac\'s agent to continue VS Code chats' : e.message, error: true);
+        toast(state.context, e.code == 'unknown' ? 'Update this Mac\'s agent to move VS Code chats here' : e.message,
+            error: true);
       }
-      return false;
     }
   }
 

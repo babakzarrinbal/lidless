@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"uniai/internal/shellenv"
 	"uniai/internal/usage"
@@ -64,6 +65,48 @@ func copilotRunning() map[string]int {
 		}
 	}
 	return out
+}
+
+// StopCopilot quits the Copilot CLI that has session sid open outside a
+// shared terminal, so the session can move into one. VS Code's own Copilot
+// runtime serves many chats at once: it is left alone.
+func StopCopilot(sid string) error {
+	if !usage.ReSessionID.MatchString(sid) {
+		return errors.New("not a conversation id")
+	}
+	pid := copilotRunning()[sid]
+	if pid == 0 {
+		return nil // already gone
+	}
+	if !copilotCLI(pid) {
+		return errors.New("VS Code's Copilot has this session open; close it there")
+	}
+	if !QuitAgent(pid, 5*time.Second) {
+		return errors.New("Copilot on the Mac is still running; quit it there")
+	}
+	return nil
+}
+
+// copilotCLI tells the Copilot CLI (the binary, or node running the npm
+// package) from another process holding a session, like VS Code's runtime
+// (copilot-runtime inside Visual Studio Code.app): never quit that one.
+func copilotCLI(pid int) bool {
+	comm, _ := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	args, _ := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
+	return copilotCLIArgs(strings.TrimSpace(string(comm)), string(args))
+}
+
+func copilotCLIArgs(comm, args string) bool {
+	if strings.Contains(args, ".app/") || copilotShim(args) {
+		return false
+	}
+	switch filepath.Base(comm) {
+	case "copilot":
+		return true
+	case "node":
+		return strings.Contains(args, "@github/copilot")
+	}
+	return false
 }
 
 // copilotBin finds the real Copilot CLI on the login shell's PATH. VS Code's
@@ -164,7 +207,7 @@ func CopilotConversations(terms []*Terminal, n int, keep func(*Conversation) boo
 		if pid, ok := running[c.ID]; ok {
 			c.Running, c.Term = true, termOf(pid, terms)
 		}
-		c.Title, c.Prompt = copilotTitle(c.path)
+		c.Title, c.Prompt, c.From = copilotTitle(c.path)
 		if c.Title == "" {
 			continue // nothing said yet
 		}
@@ -173,12 +216,13 @@ func CopilotConversations(terms []*Terminal, n int, keep func(*Conversation) boo
 	return out
 }
 
-// copilotTitle is the session's title (or else its first message) and the
-// last message typed.
-func copilotTitle(path string) (title, prompt string) {
+// copilotTitle is the session's title (or else its first message), the last
+// message typed, and the VS Code chat it carries on, if any: then the chat's
+// title, and the prompt that handed it over is not a message.
+func copilotTitle(path string) (title, prompt, from string) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	defer f.Close()
 	var first string
@@ -196,6 +240,8 @@ func copilotTitle(path string) (title, prompt string) {
 		switch {
 		case e.Type == "session.title_changed" && e.Data.Title != "":
 			title = e.Data.Title
+		case e.Type == "user.message" && from == "" && first == "" && reHandoff.MatchString(e.Data.Content):
+			from = reHandoff.FindStringSubmatch(e.Data.Content)[1]
 		case e.Type == "user.message" && e.Data.Source == "" && strings.TrimSpace(e.Data.Content) != "":
 			prompt = strings.TrimSpace(e.Data.Content)
 			if first == "" {
@@ -203,10 +249,13 @@ func copilotTitle(path string) (title, prompt string) {
 			}
 		}
 	}
+	if from != "" {
+		title = vscodeHandoffTitle(from)
+	}
 	if title == "" {
 		title = first
 	}
-	return firstLine(title), firstLine(prompt)
+	return firstLine(title), firstLine(prompt), from
 }
 
 type copilotEvent struct {

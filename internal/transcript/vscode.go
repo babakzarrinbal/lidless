@@ -7,11 +7,16 @@ package transcript
 // at path k to v, 2 appends v to the list at k (cut to length i first when i
 // is given), 3 deletes k. Older chats are the whole object as <id>.json. The
 // object has "customTitle" and "requests": each one's "message.text" is what
-// was typed and "response" the parts of the answer.
+// was typed and "response" the parts of the answer (vscode_items.go reads
+// it). A window without a folder keeps its chats in
+// globalStorage/emptyWindowChatSessions/; they run in the home folder.
 //
-// The phone reads them, and carries one on in a shared terminal by handing its
-// transcript to Copilot or Claude (chat.handoff); vscodemirror.go copies that
-// terminal's turns back into the chat. They are listed only when the phone
+// "Move here" in the app carries a chat on with Copilot in a shared terminal:
+// chat.handoff writes it out as <id>.md (VSCodeHandoff) and Copilot starts
+// with a prompt naming that file. So a terminal whose command names <id>.md
+// carries chat <id> (the chat lists that terminal), and a Copilot session
+// whose first message names it has the chat's title and stands in for the
+// chat in the lists (WithVSCode). VS Code's chats are listed only when the app
 // asks for them (older apps would try to resume them in a terminal).
 
 import (
@@ -27,14 +32,21 @@ import (
 	"uniai/internal/usage"
 )
 
-func vscodeStorage() []string {
+// vscodeUser is VS Code's User folders (stable and Insiders).
+func vscodeUser() []string {
 	home, _ := os.UserHomeDir()
 	sup := filepath.Join(home, "Library", "Application Support")
-	return []string{
-		filepath.Join(sup, "Code", "User", "workspaceStorage"),
-		filepath.Join(sup, "Code - Insiders", "User", "workspaceStorage"),
-	}
+	return []string{filepath.Join(sup, "Code", "User"), filepath.Join(sup, "Code - Insiders", "User")}
 }
+
+// vscodeCache is where chat.handoff writes chats out for Copilot.
+func vscodeCache() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Library", "Caches", "uniai", "vscode")
+}
+
+// reHandoff finds a handed-off chat's id in a command or a prompt.
+var reHandoff = regexp.MustCompile(`/uniai/vscode/([0-9a-fA-F-]{36})\.md`)
 
 // vscodeFolder is the folder a VS Code workspace has open ("" for none, a
 // multi-root workspace, or a remote one).
@@ -59,110 +71,26 @@ func vscodeFolder(ws string) string {
 // vscodeFiles is every chat file with the folder its window had open.
 func vscodeFiles() map[string]string {
 	out := map[string]string{}
-	for _, root := range vscodeStorage() {
-		wss, _ := filepath.Glob(filepath.Join(root, "*"))
+	add := func(dir string, files []string) {
+		for _, f := range files {
+			if strings.HasSuffix(f, ".json") || strings.HasSuffix(f, ".jsonl") {
+				out[f] = dir
+			}
+		}
+	}
+	home, _ := os.UserHomeDir()
+	for _, u := range vscodeUser() {
+		wss, _ := filepath.Glob(filepath.Join(u, "workspaceStorage", "*"))
 		for _, ws := range wss {
-			files, _ := filepath.Glob(filepath.Join(ws, "ChatSessions", "*.json*"))
-			if len(files) == 0 {
-				continue
-			}
-			dir := vscodeFolder(ws)
-			if dir == "" {
-				continue
-			}
-			for _, f := range files {
-				if strings.HasSuffix(f, ".json") || strings.HasSuffix(f, ".jsonl") {
-					out[f] = dir
-				}
+			if dir := vscodeFolder(ws); dir != "" {
+				files, _ := filepath.Glob(filepath.Join(ws, "ChatSessions", "*.json*"))
+				add(dir, files)
 			}
 		}
+		files, _ := filepath.Glob(filepath.Join(u, "globalStorage", "emptyWindowChatSessions", "*.json*"))
+		add(home, files)
 	}
 	return out
-}
-
-// vscodeState replays a chat file into its object.
-func vscodeState(path string) (map[string]any, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if strings.HasSuffix(path, ".json") {
-		var m map[string]any
-		return m, json.Unmarshal(b, &m)
-	}
-	var root any
-	for _, l := range strings.Split(string(b), "\n") {
-		var e struct {
-			Kind int             `json:"kind"`
-			K    []any           `json:"k"`
-			V    json.RawMessage `json:"v"`
-			I    *int            `json:"i"`
-		}
-		if l == "" || json.Unmarshal([]byte(l), &e) != nil {
-			continue
-		}
-		var v any
-		if len(e.V) > 0 {
-			json.Unmarshal(e.V, &v)
-		}
-		switch e.Kind {
-		case 0:
-			root = v
-		case 1:
-			root = vscodeEdit(root, e.K, func(any) any { return v })
-		case 2:
-			add, _ := v.([]any)
-			root = vscodeEdit(root, e.K, func(old any) any {
-				l, _ := old.([]any)
-				if e.I != nil && *e.I >= 0 && *e.I <= len(l) {
-					l = l[:*e.I]
-				}
-				return append(l, add...)
-			})
-		case 3:
-			root = vscodeEdit(root, e.K, func(any) any { return nil })
-		}
-	}
-	m, _ := root.(map[string]any)
-	if m == nil {
-		return nil, errors.New("not a VS Code chat")
-	}
-	return m, nil
-}
-
-// vscodeEdit replaces the value at path k inside node with f of it.
-func vscodeEdit(node any, k []any, f func(any) any) any {
-	if len(k) == 0 {
-		return f(node)
-	}
-	switch n := node.(type) {
-	case map[string]any:
-		if key, ok := k[0].(string); ok {
-			n[key] = vscodeEdit(n[key], k[1:], f)
-		}
-	case []any:
-		if i, ok := k[0].(float64); ok && i >= 0 && int(i) < len(n) {
-			n[int(i)] = vscodeEdit(n[int(i)], k[1:], f)
-		}
-	}
-	return node
-}
-
-func vscodeRequests(m map[string]any) []map[string]any {
-	l, _ := m["requests"].([]any)
-	out := make([]map[string]any, 0, len(l))
-	for _, r := range l {
-		if r, ok := r.(map[string]any); ok {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-func vscodeTyped(r map[string]any) string {
-	msg, _ := r["message"].(map[string]any)
-	s, _ := msg["text"].(string)
-	return strings.TrimSpace(s)
 }
 
 // vscodeTitles caches each file's title, last prompt and model by its size and
@@ -209,9 +137,30 @@ func vscodeTitleOf(c *Conversation) (title, prompt, model string) {
 	return t.title, t.prompt, t.model
 }
 
+// WithVSCode adds VS Code's chats to list l (Claude's and Copilot's), at most
+// n in all. A chat a Copilot session in l carries on is left out: that
+// session stands in for it.
+func WithVSCode(l []Conversation, terms []*Terminal, n int, keep func(*Conversation) bool) []Conversation {
+	moved := map[string]bool{}
+	for _, c := range l {
+		if c.From != "" {
+			moved[c.From] = true
+		}
+	}
+	vs := VSCodeConversations(terms, n, func(c *Conversation) bool { return !moved[c.ID] && (keep == nil || keep(c)) })
+	return MergeConversations(l, vs, n)
+}
+
 // VSCodeConversations lists VS Code's chats newest first, at most n of those
-// keep takes (keep sees each one's Dir), like [conversations].
-func VSCodeConversations(n int, keep func(*Conversation) bool) []Conversation {
+// keep takes (keep sees each one's Dir), like [conversations]. A chat a
+// shared terminal carries on is running in it.
+func VSCodeConversations(terms []*Terminal, n int, keep func(*Conversation) bool) []Conversation {
+	carried := map[string]uint32{}
+	for _, t := range terms {
+		if m := reHandoff.FindStringSubmatch(t.Run); m != nil {
+			carried[m[1]] = t.ID
+		}
+	}
 	var list []Conversation
 	for f, dir := range vscodeFiles() {
 		st, err := os.Stat(f)
@@ -237,6 +186,9 @@ func VSCodeConversations(n int, keep func(*Conversation) bool) []Conversation {
 		if c.Title == "" {
 			continue // nothing said yet
 		}
+		if t, ok := carried[c.ID]; ok {
+			c.Running, c.Term = true, t
+		}
 		out = append(out, c)
 	}
 	return out
@@ -255,35 +207,7 @@ func vscodeFind(id string) (path, dir string) {
 	return "", ""
 }
 
-// VSCodeTranscript is a chat's items, the last vscodeMax of them, and the
-// file's size and time: the phone asks again with them and gets
-// {"same": true} until VS Code writes more.
-func VSCodeTranscript(id string, size, mtime int64, keep func(dir string) bool) (map[string]any, error) {
-	path, dir := vscodeFind(id)
-	if path == "" || !keep(dir) {
-		return nil, errors.New("no such VS Code chat in a shared folder")
-	}
-	st, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if st.Size() == size && st.ModTime().Unix() == mtime {
-		return map[string]any{"same": true}, nil
-	}
-	m, err := vscodeState(path)
-	if err != nil {
-		return nil, err
-	}
-	items := vscodeItems(m)
-	if len(items) > vscodeMax {
-		items = append([]ChatItem{{K: "note", Text: "Earlier messages are in VS Code"}}, items[len(items)-vscodeMax:]...)
-	}
-	return map[string]any{"items": items, "size": st.Size(), "mtime": st.ModTime().Unix()}, nil
-}
-
-const vscodeMax = 600
-
-// VSCodeHandoff writes a chat out as markdown for an agent in a shared
+// VSCodeHandoff writes a chat out as markdown for Copilot in a shared
 // terminal to carry on (only VS Code can add to the chat itself), and the
 // prompt that hands it over.
 func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error) {
@@ -318,8 +242,7 @@ func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error
 	if len(s) > vscodeHandoffMax { // the newest part: an agent reads the rest from the start if it needs it
 		s = "(The start of this conversation is left out.)\n" + s[len(s)-vscodeHandoffMax:]
 	}
-	home, _ := os.UserHomeDir()
-	out := filepath.Join(home, "Library", "Caches", "uniai", "vscode", id+".md")
+	out := filepath.Join(vscodeCache(), id+".md")
 	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
 		return nil, err
 	}
@@ -335,123 +258,11 @@ func VSCodeHandoff(id string, keep func(dir string) bool) (map[string]any, error
 
 const vscodeHandoffMax = 300 << 10
 
-func vscodeItems(m map[string]any) []ChatItem {
-	items := []ChatItem{}
-	for _, r := range vscodeRequests(m) {
-		if p := vscodeTyped(r); p != "" {
-			items = append(items, ChatItem{K: "user", Text: p})
-		}
-		var text strings.Builder
-		flush := func() {
-			if t := strings.TrimSpace(text.String()); t != "" {
-				items = append(items, ChatItem{K: "text", Text: t})
-			}
-			text.Reset()
-		}
-		parts, _ := r["response"].([]any)
-		for _, p := range parts {
-			p, _ := p.(map[string]any)
-			kind, _ := p["kind"].(string)
-			switch kind {
-			case "", "markdownContent":
-				text.WriteString(vscodeString(p["value"]))
-				if c, ok := p["content"]; ok {
-					text.WriteString(vscodeString(c))
-				}
-			case "toolInvocationSerialized":
-				flush()
-				items = append(items, vscodeTool(p)...)
-			}
-		}
-		flush()
-		res, _ := r["result"].(map[string]any)
-		if e, _ := res["errorDetails"].(map[string]any); e != nil {
-			if s, _ := e["message"].(string); s != "" {
-				items = append(items, ChatItem{K: "note", Text: cut(s)})
-			}
-		}
+// vscodeHandoffTitle is the title of chat id from its handoff file.
+func vscodeHandoffTitle(id string) string {
+	b, _ := os.ReadFile(filepath.Join(vscodeCache(), id+".md"))
+	if t, ok := strings.CutPrefix(firstLine(string(b)), "# "); ok {
+		return t
 	}
-	return items
+	return "VS Code chat"
 }
-
-// vscodeString is a string, or the "value" of a markdown string object.
-func vscodeString(v any) string {
-	switch v := v.(type) {
-	case string:
-		return v
-	case map[string]any:
-		s, _ := v["value"].(string)
-		return s
-	}
-	return ""
-}
-
-var reVSCodeLink = regexp.MustCompile(`\[([^\]]*)\]\(([^)]*)\)`)
-
-// vscodePlain turns VS Code's "Read [](file:///…)" into "Read ~/…".
-func vscodePlain(s string) string {
-	s = reVSCodeLink.ReplaceAllStringFunc(s, func(l string) string {
-		m := reVSCodeLink.FindStringSubmatch(l)
-		if m[1] != "" {
-			return m[1]
-		}
-		if u, err := url.Parse(m[2]); err == nil && u.Scheme == "file" {
-			p := u.Path
-			if u.Fragment != "" {
-				p += "#" + u.Fragment
-			}
-			return tilde(p)
-		}
-		return m[2]
-	})
-	return firstLine(strings.ReplaceAll(s, "`", ""))
-}
-
-// vscodeTool is one tool call and, once it has finished, its result, named
-// the way the phone shows Claude's.
-func vscodeTool(p map[string]any) []ChatItem {
-	id, _ := p["toolCallId"].(string)
-	tool, _ := p["toolId"].(string)
-	msg := vscodePlain(vscodeString(p["pastTenseMessage"]))
-	if msg == "" {
-		msg = vscodePlain(vscodeString(p["invocationMessage"]))
-	}
-	data, _ := p["toolSpecificData"].(map[string]any)
-	name, detail, result, failed := strings.TrimPrefix(tool, "copilot_"), "", "", false
-	switch tool {
-	case "run_in_terminal":
-		name = "Bash"
-		cl, _ := data["commandLine"].(map[string]any)
-		cmd, _ := cl["original"].(string)
-		msg, detail = firstLine(cmd), cut(strings.TrimSpace(cmd))
-		out, _ := data["terminalCommandOutput"].(map[string]any)
-		s, _ := out["text"].(string)
-		result = cut(strings.TrimSpace(reANSI.ReplaceAllString(strings.ReplaceAll(s, "\r", ""), "")))
-		st, _ := data["terminalCommandState"].(map[string]any)
-		code, _ := st["exitCode"].(float64)
-		failed = code != 0
-	case "copilot_readFile":
-		name = "Read"
-	case "copilot_createFile":
-		name = "Write"
-	case "copilot_replaceString", "copilot_multiReplaceString", "copilot_insertEdit", "copilot_applyPatch", "copilot_editNotebook":
-		name = "Edit"
-	case "copilot_findTextInFiles", "copilot_searchCodebase":
-		name = "Grep"
-	case "copilot_findFiles", "copilot_listDirectory":
-		name = "Glob"
-	case "copilot_fetchWebPage", "fetch_webpage":
-		name = "WebFetch"
-	case "manage_todo_list":
-		name = "TodoWrite"
-	case "runSubagent", "search_subagent":
-		name = "Agent"
-	}
-	items := []ChatItem{{K: "tool", ID: id, Name: name, Text: msg, Detail: detail}}
-	if done, _ := p["isComplete"].(bool); done && id != "" {
-		items = append(items, ChatItem{K: "result", ID: id, Text: result, Err: failed})
-	}
-	return items
-}
-
-var reANSI = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07`)

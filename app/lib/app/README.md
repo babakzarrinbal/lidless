@@ -6,7 +6,7 @@ the theme and the logos. Features live in `../features/`.
 
 Entry points: `Home` (home.dart, split into home_bar, home_drawer,
 home_recent, home_status), `SessionView`, `SessionFlows` (the dialog flows:
-restart, open or resume a conversation, close), `appTheme()`, `C` (colors).
+restart, open, resume or move a conversation here, close), `appTheme()`, `C` (colors).
 
 RPC: `chat.handoff`, `chat.stop` (SessionFlows); `sys.status`, `usage`,
 `tokens.reset` (home_status). Everything else goes through the feature models.
